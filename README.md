@@ -1,5 +1,5 @@
 <p align="center">
-    <img src="https://raw.githubusercontent.com/aachurin/meow.validators/master/logo.svg" alt="Meow DI" />
+    <img src="https://raw.githubusercontent.com/aachurin/meow.validators/master/logo.svg" alt="Meow Validators" />
 </p>
 <p align="center">
     <b>Meow Validators</b>

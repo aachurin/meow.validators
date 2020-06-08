@@ -1,4 +1,7 @@
 <p align="center">
+    <img src="https://raw.githubusercontent.com/aachurin/meow.validators/master/logo.svg" alt="Meow DI" />
+</p>
+<p align="center">
     <b>Meow Validators</b>
 </p>
 

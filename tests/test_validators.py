@@ -126,9 +126,6 @@ def test_datetime():
         2020, 1, 2, 1, 2, 3, tzinfo=datetime.timezone.utc
     )
     assert V[datetime.datetime].validate(
-        datetime.datetime(2020, 1, 2, 1, 2, 3)
-    ) == datetime.datetime(2020, 1, 2, 1, 2, 3)
-    assert V[datetime.datetime].validate(
         "2020-01-02T01:02:03+01:00"
     ) == datetime.datetime(
         2020, 1, 2, 1, 2, 3, tzinfo=datetime.timezone(datetime.timedelta(seconds=3600))
@@ -173,9 +170,6 @@ def test_uuid():
     assert V[uuid.UUID].validate("8dd8ceb7-3d5c-4f46-b932-e7ba4078f7cf") == uuid.UUID(
         "8dd8ceb7-3d5c-4f46-b932-e7ba4078f7cf"
     )
-    assert V[uuid.UUID].validate(
-        uuid.UUID("8dd8ceb7-3d5c-4f46-b932-e7ba4078f7cf")
-    ) == uuid.UUID("8dd8ceb7-3d5c-4f46-b932-e7ba4078f7cf")
     with pytest.raises(ValidationError):
         V[uuid.UUID].validate(None)
     with pytest.raises(ValidationError):
@@ -335,7 +329,7 @@ def test_dataclasses():
         required=["a", "b"],
         cast=C,
     )
-    assert V[C].validate({"a": ({"x": "aaa"}, {"i": 1, "j": 1.1}), "b": "ccc"}) == C(
+    assert V[C].validate({"a": [{"x": "aaa"}, {"i": 1, "j": 1.1}], "b": "ccc"}) == C(
         a=(A(x="aaa"), B(i=1, j=1.1)), b="ccc"
     )
     with pytest.raises(ValidationError):

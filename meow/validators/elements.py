@@ -58,10 +58,10 @@ class Union(Validator):
     errors = {"union": "Must match one of the union types."}
 
     def __init__(self, items: typing.Sequence[Validator]):
-        assert isinstance(items, (list, tuple)) and all(
+        assert isinstance(items, typing.Sequence) and all(
             isinstance(k, Validator) for k in items
         )
-        self.items = list(items)
+        self.items = tuple(items)
 
     def validate(self, value, allow_coerce=False):
         for item in self.items:
@@ -219,8 +219,6 @@ class DateTimeType(Validator):
     datetime_type: typing.Type
 
     def validate(self, value, allow_coerce=False):
-        if isinstance(value, self.datetime_type):
-            return value
         if not isinstance(value, str):
             self.error("type")
 
@@ -286,9 +284,7 @@ class UUID(Validator):
     errors = {"type": "Must be a valid UUID."}
 
     def validate(self, value, allow_coerce=False):
-        if isinstance(value, uuid.UUID):
-            return value
-        elif not isinstance(value, str):
+        if not isinstance(value, str):
             self.error("type")
 
         try:
@@ -311,14 +307,14 @@ class Object(Validator):
 
     def __init__(
         self,
-        properties: typing.Mapping[str, Validator] = None,
+        properties: typing.Mapping[str, Validator],
         required: typing.Sequence[str] = None,
         cast: typing.Callable = None,
     ):
         assert all(isinstance(k, str) for k in properties.keys())
         assert all(isinstance(v, Validator) for v in properties.values())
         assert required is None or (
-            isinstance(required, (list, tuple))
+            isinstance(required, typing.Sequence)
             and all(isinstance(i, str) for i in required)
         )
         assert cast is None or callable(cast)
@@ -328,7 +324,7 @@ class Object(Validator):
         self.cast = cast
 
     def validate(self, value, allow_coerce=False):
-        if not isinstance(value, (dict, typing.Mapping)):
+        if not isinstance(value, dict):
             self.error("type")
 
         validated = {}
@@ -393,7 +389,7 @@ class Mapping(Validator):
         self.cast = cast
 
     def validate(self, value, allow_coerce=False):
-        if not isinstance(value, typing.Mapping):
+        if not isinstance(value, dict):
             self.error("type")
 
         if self.min_items is not None and len(value) < self.min_items:
@@ -441,6 +437,8 @@ class Array(Validator):
         "unique_items": "This item is not unique.",
     }
 
+    items: typing.Union[Validator, typing.Sequence[Validator]]
+
     def __init__(
         self,
         items: typing.Union[Validator, typing.Sequence[Validator]] = None,
@@ -449,13 +447,12 @@ class Array(Validator):
         unique_items: bool = False,
         cast: typing.Callable = None,
     ):
-        items = list(items) if isinstance(items, (list, tuple)) else items
-
         assert (
             items is None
             or isinstance(items, Validator)
             or (
-                isinstance(items, list) and all(isinstance(i, Validator) for i in items)
+                isinstance(items, typing.Sequence)
+                and all(isinstance(i, Validator) for i in items)
             )
         )
         assert min_items is None or isinstance(min_items, int)
@@ -465,15 +462,17 @@ class Array(Validator):
 
         self.unique_items = unique_items
         self.cast = cast
-        self.items = items
-        if isinstance(items, list):
-            self.min_items = self.max_items = len(items)
+
+        if isinstance(items, typing.Sequence):
+            self.items = tuple(items)
+            self.min_items = self.max_items = len(self.items)
         else:
+            self.items = items
             self.min_items = min_items
             self.max_items = max_items
 
     def validate(self, value, allow_coerce=False):
-        if not isinstance(value, (list, tuple)):
+        if not isinstance(value, list):
             self.error("type")
 
         if self.min_items is not None and len(value) < self.min_items:
@@ -481,15 +480,15 @@ class Array(Validator):
         elif self.max_items is not None and len(value) > self.max_items:
             self.error("max_items", count=self.max_items)
 
-        # Ensure all items are of the right type.
         errors = {}
         if self.unique_items:
             seen_items = Uniqueness()
 
         validated = []
+        multiple_item_types = isinstance(self.items, tuple)
         for pos, item in enumerate(value):
             try:
-                if isinstance(self.items, list):
+                if multiple_item_types:
                     item = self.items[pos].validate(item, allow_coerce)
                 elif self.items is not None:
                     # noinspection PyUnresolvedReferences

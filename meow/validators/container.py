@@ -182,7 +182,7 @@ class Container:
         if typing.get_origin(tp) is typing.Union:
             type_args = typing.get_args(tp)
             none_type = type(None)
-            args = tuple(item for item in type_args if item is not none_type)  # type: ignore
+            args = tuple(item for item in type_args if item is not none_type)
             optional = len(args) != len(type_args)
             if optional:
                 cls, kwargs, _ = self._get_constructor(

@@ -25,6 +25,7 @@ import inspect
 import datetime
 import uuid
 import typing
+import enum
 from dataclasses import field as _field, fields, is_dataclass, MISSING
 from .elements import (
     Validator,
@@ -36,8 +37,9 @@ from .elements import (
     DateTime,
     Time,
     Date,
-    Object,
     UUID,
+    Enum,
+    Object,
     Mapping,
     Array,
     Optional,
@@ -45,7 +47,7 @@ from .elements import (
 )
 
 
-def field(
+def field(  # type: ignore
     *,
     default=MISSING,
     default_factory=MISSING,
@@ -55,7 +57,7 @@ def field(
     compare=True,
     **kwargs,
 ):
-    return _field(
+    return _field(  # type: ignore
         default=default,
         default_factory=default_factory,
         repr=repr,
@@ -66,9 +68,16 @@ def field(
     )
 
 
+CachedConstructor = typing.Tuple[
+    typing.Type[Validator], typing.Optional[typing.Mapping[str, object]], bool
+]
+Constructor = typing.Tuple[
+    typing.Type[Validator], typing.Optional[typing.Mapping[str, object]]
+]
+
+
 class Container:
-    _primitive_types: typing.Dict[typing.Any, typing.Type[Validator]] = {
-        inspect.Parameter.empty: Any,
+    _primitive_types = {
         typing.Any: Any,
         str: String,
         float: Float,
@@ -80,24 +89,36 @@ class Container:
         uuid.UUID: UUID,
     }
 
-    _lookup_cache: dict
-    _type_cache: dict
+    _lookup_cache: typing.Dict[typing.Type[object], Validator]
+    _type_cache: typing.Dict[typing.Type[object], CachedConstructor]
 
-    def __init__(self, lookup_cache_size=5000, type_cache_size=1000):
+    def __init__(
+        self,
+        lookup_cache_size: int = 5000,
+        type_cache_size: int = 2500,
+        default: typing.Optional[
+            typing.Callable[[typing.Type[object]], Constructor]
+        ] = None,
+    ):
         self._lookup_cache = {}
         self._type_cache = {}
         self._lookup_cache_size = lookup_cache_size
         self._type_cache_size = type_cache_size
+        self._default = default
 
     @classmethod
-    def is_primitive_type(cls, tp: typing.Type) -> bool:
+    def is_primitive_type(cls, tp: typing.Type[object]) -> bool:
         return tp in cls._primitive_types
 
     @staticmethod
-    def is_dataclass_type(tp: typing.Type) -> bool:
+    def is_dataclass_type(tp: typing.Type[object]) -> bool:
         return isinstance(tp, type) and is_dataclass(tp)
 
-    def get_validator(self, tp: typing.Type) -> Validator:
+    @staticmethod
+    def is_enum_type(tp: typing.Type[object]) -> bool:
+        return isinstance(tp, type) and issubclass(tp, enum.Enum)
+
+    def get_validator(self, tp: typing.Type[object]) -> Validator:
         try:
             return self._lookup_cache[tp]
         except KeyError:
@@ -109,13 +130,19 @@ class Container:
 
     __getitem__ = get_validator
 
-    def get_validator_parametrized(self, tp: typing.Type, **params) -> Validator:
+    def get_validator_parametrized(
+        self, tp: typing.Type[object], **params: object
+    ) -> Validator:
         return self._make_validator(tp, params) if params else self.get_validator(tp)
 
     __call__ = get_validator_parametrized
 
-    def _make_validator(self, tp: typing.Type, params: dict = None) -> Validator:
-        cls, initial, optional = self._get_validator_constructor(tp)
+    def _make_validator(
+        self,
+        tp: typing.Type[object],
+        params: typing.Optional[typing.Mapping[str, object]] = None,
+    ) -> Validator:
+        cls, initial, optional = self._get_constructor(tp)
 
         if params and initial:
             # noinspection PyArgumentList
@@ -133,38 +160,43 @@ class Container:
             return Optional(ret)
         return ret
 
-    def _get_validator_constructor(self, tp: typing.Type):
+    def _get_constructor(self, tp: typing.Type[object]) -> CachedConstructor:
         try:
             return self._type_cache[tp]
         except KeyError:
             pass
-        if params := self._get_maybe_optional(tp):
+        if constructor := self._get_maybe_optional(tp):
             optional = True
         else:
             optional = False
-            params = self._get_constructor_args(tp)
-        cls, args = params
-        if not self.is_dataclass_type(tp):
-            self._type_cache[tp] = cls, args, optional
-            if len(self._type_cache) > self._type_cache_size:  # pragma: nocover
-                self._type_cache.pop(next(iter(self._type_cache)))
-        return cls, args, optional
+            constructor = self._make_constructor(tp)
+        cls, kwargs = constructor
+        self._type_cache[tp] = cls, kwargs, optional
+        if len(self._type_cache) > self._type_cache_size:  # pragma: nocover
+            self._type_cache.pop(next(iter(self._type_cache)))
+        return cls, kwargs, optional
 
-    def _get_maybe_optional(self, tp: typing.Type):
+    def _get_maybe_optional(
+        self, tp: typing.Type[object]
+    ) -> typing.Optional[Constructor]:
         if typing.get_origin(tp) is typing.Union:
             type_args = typing.get_args(tp)
             none_type = type(None)
             args = tuple(item for item in type_args if item is not none_type)  # type: ignore
             optional = len(args) != len(type_args)
             if optional:
-                cls, params, _ = self._get_validator_constructor(
+                cls, kwargs, _ = self._get_constructor(
                     args[0] if len(args) == 1 else typing.Union.__getitem__(args)
                 )
-                return cls, params
+                return cls, kwargs
+        return None
 
-    def _get_constructor_args(self, tp: typing.Type):
+    def _make_constructor(self, tp: typing.Type[object]) -> Constructor:
         if self.is_primitive_type(tp):
             return self._primitive_types[tp], None
+
+        if self.is_enum_type(tp):
+            return Enum, {"items": tp}
 
         if self.is_dataclass_type(tp):
             properties = {}
@@ -183,7 +215,7 @@ class Container:
         origin = typing.get_origin(tp) or tp
         type_args = typing.get_args(tp)
 
-        items: typing.Any
+        items: typing.Optional[object]
 
         if origin is typing.Union:
             items = [self.get_validator(arg) for arg in type_args]
@@ -224,6 +256,9 @@ class Container:
             keys = self.get_validator(type_args[0]) if type_args else None
             values = self.get_validator(type_args[1]) if type_args else None
             return Mapping, {"keys": keys, "values": values, "cast": cast}
+
+        if self._default:
+            return self._default(tp)
 
         raise TypeError("Don't know how to create validator for type %r" % tp)
 

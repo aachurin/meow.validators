@@ -3,6 +3,7 @@ import typing
 import datetime
 import dataclasses
 import uuid
+import enum
 from collections import OrderedDict, deque
 from meow.validators import *
 
@@ -287,6 +288,19 @@ def test_other():
         V[typing.Generator]
 
 
+def test_enum():
+    class Enum1(enum.Enum):
+        A = 1
+        B = 2
+
+    assert V[Enum1] is V[Enum1]
+    assert V[Enum1].validate("A") == Enum1.A
+    with pytest.raises(ValidationError):
+        V[Enum1].validate("C")
+    with pytest.raises(ValidationError):
+        V[Enum1].validate(1)
+
+
 def test_dataclasses():
     @dataclasses.dataclass
     class A:
@@ -344,3 +358,19 @@ def test_dataclasses():
         V[C].validate({"a": [], "b": "ccc"})
     except ValidationError as e:
         assert e.as_dict() == {"a": "Must have at least 2 items."}
+
+
+def test_default():
+    class SpecialType(int):
+        pass
+
+    def special_type(tp):
+        if tp is SpecialType:
+            return Integer, {"minimum": 1, "maximum": 3}
+        raise TypeError()
+
+    V = Container(default=special_type)
+    assert V[SpecialType] is V[SpecialType]
+    assert V[SpecialType].validate(1) == 1
+    with pytest.raises(ValidationError):
+        V[SpecialType].validate(0)

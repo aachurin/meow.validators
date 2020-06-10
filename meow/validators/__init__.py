@@ -28,6 +28,7 @@ from .container import (
     get_validator_with_params,
     is_primitive_type,
     is_dataclass_type,
+    Container,
 )
 from .elements import (
     Validator,
@@ -45,11 +46,12 @@ from .elements import (
     Mapping,
     Array,
     Union,
+    Enum,
 )
 from .exception import ValidationError
 
 
-__version__ = "1.0"
+__version__ = "1.1"
 __all__ = (
     "V",
     "field",
@@ -73,4 +75,6 @@ __all__ = (
     "Mapping",
     "Array",
     "Union",
+    "Enum",
+    "Container",
 )

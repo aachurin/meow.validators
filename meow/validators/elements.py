@@ -31,16 +31,16 @@ from .exception import ValidationError
 class Validator:
     errors: typing.Dict[str, str] = {}
 
-    def error(self, code, **context):
+    def error(self, code: str, **context: object) -> typing.NoReturn:
         raise ValidationError(self.error_message(code, **context))
 
-    def error_message(self, code, **context):
+    def error_message(self, code: str, **context: object) -> str:
         return self.errors[code].format_map(context)
 
-    def validate(self, value, allow_coerce=False):
+    def validate(self, value: object, allow_coerce: bool = False) -> object:
         raise NotImplementedError()
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         return type(self) is type(other) and self.__dict__ == other.__dict__
 
 
@@ -48,7 +48,7 @@ class Optional(Validator):
     def __init__(self, validator: Validator):
         self.validator = validator
 
-    def validate(self, value, allow_coerce=False):
+    def validate(self, value: object, allow_coerce: bool = False) -> object:
         if value is None:
             return None
         return self.validator.validate(value, allow_coerce)
@@ -61,15 +61,29 @@ class Union(Validator):
         assert isinstance(items, typing.Sequence) and all(
             isinstance(k, Validator) for k in items
         )
-        self.items = tuple(items)
+        self.items = items
 
-    def validate(self, value, allow_coerce=False):
+    def validate(self, value: object, allow_coerce: bool = False) -> object:
         for item in self.items:
             try:
                 return item.validate(value, allow_coerce)
             except ValidationError:
                 pass
         self.error("union")
+
+
+class Enum(Validator):
+    errors = {"choice": "Must be one of {enum}.", "type": "Must be a string."}
+
+    def __init__(self, items: typing.Mapping[object, object]):
+        self.items = items
+
+    def validate(self, value: object, allow_coerce: bool = False) -> object:
+        try:
+            return self.items[value]
+        except KeyError:
+            enum = [str(getattr(x, "name", x)) for x in self.items]
+            self.error("choice", enum=", ".join(enum))
 
 
 class String(Validator):
@@ -82,7 +96,10 @@ class String(Validator):
     }
 
     def __init__(
-        self, max_length: int = None, min_length: int = None, pattern: str = None
+        self,
+        max_length: typing.Optional[int] = None,
+        min_length: typing.Optional[int] = None,
+        pattern: typing.Optional[str] = None,
     ):
 
         assert max_length is None or isinstance(max_length, int)
@@ -93,7 +110,7 @@ class String(Validator):
         self.min_length = min_length
         self.pattern = pattern
 
-    def validate(self, value, allow_coerce=False):
+    def validate(self, value: object, allow_coerce: bool = False) -> str:
         if not isinstance(value, str):
             self.error("type")
 
@@ -112,7 +129,10 @@ class String(Validator):
         return value
 
 
-class NumericType(Validator):
+_T = typing.TypeVar("_T")
+
+
+class NumericType(Validator, typing.Generic[_T]):
     errors = {
         "type": "Must be a number.",
         "integer": "Must be an integer.",
@@ -122,14 +142,14 @@ class NumericType(Validator):
         "exclusive_maximum": "Must be less than {value}.",
     }
 
-    numeric_type: typing.Type
+    numeric_type: typing.Type[_T]
 
     def __init__(
         self,
-        minimum=None,
-        maximum=None,
-        exclusive_minimum=False,
-        exclusive_maximum=False,
+        minimum: typing.Optional[_T] = None,
+        maximum: typing.Optional[_T] = None,
+        exclusive_minimum: bool = False,
+        exclusive_maximum: bool = False,
     ):
 
         assert minimum is None or isinstance(minimum, (int, float))
@@ -142,22 +162,22 @@ class NumericType(Validator):
         self.exclusive_minimum = exclusive_minimum
         self.exclusive_maximum = exclusive_maximum
 
-    def validate(self, value, allow_coerce=False):
-        if value is None:
-            self.error("type")
-        elif (
+    def validate(self, value: object, allow_coerce: bool = False) -> _T:
+        if (
             self.numeric_type is int
             and isinstance(value, float)
             and not value.is_integer()
         ):
             self.error("integer")
         elif not allow_coerce and (
-            not isinstance(value, (int, float)) or isinstance(value, bool)
+            not isinstance(value, (int, float))
+            or isinstance(value, bool)
+            or value is None
         ):
             self.error("type")
 
         try:
-            value = self.numeric_type(value)
+            value = self.numeric_type(value)  # type: ignore
         except (TypeError, ValueError):
             self.error("type")
 
@@ -180,11 +200,11 @@ class NumericType(Validator):
         return value
 
 
-class Float(NumericType):
+class Float(NumericType[float]):
     numeric_type = float
 
 
-class Integer(NumericType):
+class Integer(NumericType[int]):
     numeric_type = int
 
 
@@ -200,7 +220,7 @@ class Boolean(Validator):
         "0": False,
     }
 
-    def validate(self, value, allow_coerce=False):
+    def validate(self, value: object, allow_coerce: bool = False) -> bool:
         if not isinstance(value, bool):
             if allow_coerce and isinstance(value, str):
                 try:
@@ -212,13 +232,13 @@ class Boolean(Validator):
         return value
 
 
-class DateTimeType(Validator):
+class DateTimeType(Validator, typing.Generic[_T]):
     errors = {"type": "Must be a valid datetime."}
 
-    datetime_pattern: typing.Pattern
-    datetime_type: typing.Type
+    datetime_pattern: typing.ClassVar[typing.Pattern[str]]
+    datetime_type: typing.ClassVar[typing.Type[_T]]
 
-    def validate(self, value, allow_coerce=False):
+    def validate(self, value: object, allow_coerce: bool = False) -> _T:
         if not isinstance(value, str):
             self.error("type")
 
@@ -226,36 +246,43 @@ class DateTimeType(Validator):
         if not match:
             self.error("type")
 
-        kwargs = match.groupdict()
-        if "microsecond" in kwargs:
-            kwargs["microsecond"] = kwargs["microsecond"] and kwargs[
-                "microsecond"
-            ].ljust(6, "0")
+        group = match.groupdict()
+        if "microsecond" in group:
+            group["microsecond"] = group["microsecond"] and group["microsecond"].ljust(
+                6, "0"
+            )
 
-        tzinfo = kwargs.pop("tzinfo", None)
+        tz = group.pop("tzinfo", None)
 
-        if tzinfo == "Z":
-            tzinfo = datetime.timezone.utc
+        if tz == "Z":
+            tzinfo: typing.Optional[datetime.tzinfo] = datetime.timezone.utc
 
-        elif tzinfo is not None:
-            offset_minutes = int(tzinfo[-2:]) if len(tzinfo) > 3 else 0
-            offset_hours = int(tzinfo[1:3])
+        elif tz is not None:
+            offset_minutes = int(tz[-2:]) if len(tz) > 3 else 0
+            offset_hours = int(tz[1:3])
             delta = datetime.timedelta(hours=offset_hours, minutes=offset_minutes)
-            if tzinfo[0] == "-":
+            if tz[0] == "-":
                 delta = -delta
             tzinfo = datetime.timezone(delta)
 
-        kwargs = {k: int(v) for k, v in kwargs.items() if v is not None}
+        else:
+            tzinfo = None
+
+        kwargs: typing.Dict[str, object] = {
+            k: int(v) for k, v in group.items() if v is not None
+        }
         if tzinfo is not None:
             kwargs["tzinfo"] = tzinfo
 
         try:
-            return self.datetime_type(**kwargs)
+            value = self.datetime_type(**kwargs)  # type: ignore
         except ValueError:
             self.error("type")
 
+        return value
 
-class DateTime(DateTimeType):
+
+class DateTime(DateTimeType[datetime.datetime]):
     datetime_pattern = re.compile(
         r"(?P<year>\d{4})-(?P<month>\d{1,2})-(?P<day>\d{1,2})"
         r"[T ](?P<hour>\d{1,2}):(?P<minute>\d{1,2})"
@@ -265,7 +292,7 @@ class DateTime(DateTimeType):
     datetime_type = datetime.datetime
 
 
-class Time(DateTimeType):
+class Time(DateTimeType[datetime.time]):
     datetime_pattern = re.compile(
         r"(?P<hour>\d{1,2}):(?P<minute>\d{1,2})"
         r"(?::(?P<second>\d{1,2})(?:\.(?P<microsecond>\d{1,6})\d{0,6})?)?"
@@ -273,7 +300,7 @@ class Time(DateTimeType):
     datetime_type = datetime.time
 
 
-class Date(DateTimeType):
+class Date(DateTimeType[datetime.date]):
     datetime_pattern = re.compile(
         r"(?P<year>\d{4})-(?P<month>\d{1,2})-(?P<day>\d{1,2})$"
     )
@@ -283,7 +310,7 @@ class Date(DateTimeType):
 class UUID(Validator):
     errors = {"type": "Must be a valid UUID."}
 
-    def validate(self, value, allow_coerce=False):
+    def validate(self, value: object, allow_coerce: bool = False) -> uuid.UUID:
         if not isinstance(value, str):
             self.error("type")
 
@@ -294,8 +321,13 @@ class UUID(Validator):
 
 
 class Any(Validator):
-    def validate(self, value, allow_coerce=False):
+    def validate(self, value: object, allow_coerce: bool = False) -> object:
         return value
+
+
+class Cast(typing.Protocol):
+    def __call__(self, **kwargs: object) -> object:
+        raise NotImplementedError()
 
 
 class Object(Validator):
@@ -308,8 +340,8 @@ class Object(Validator):
     def __init__(
         self,
         properties: typing.Mapping[str, Validator],
-        required: typing.Sequence[str] = None,
-        cast: typing.Callable = None,
+        required: typing.Optional[typing.Sequence[str]] = None,
+        cast: typing.Optional[Cast] = None,
     ):
         assert all(isinstance(k, str) for k in properties.keys())
         assert all(isinstance(v, Validator) for v in properties.values())
@@ -319,18 +351,19 @@ class Object(Validator):
         )
         assert cast is None or callable(cast)
 
-        self.properties = dict(properties)
-        self.required = tuple(required) if required else ()
+        self.properties = properties
+        self.required = required
         self.cast = cast
 
-    def validate(self, value, allow_coerce=False):
+    def validate(self, value: object, allow_coerce: bool = False) -> object:
         if not isinstance(value, dict):
             self.error("type")
 
         validated = {}
 
         # Ensure all property keys are strings.
-        errors = {}
+        errors: typing.Dict[str, object] = {}
+
         for key in value.keys():
             if not isinstance(key, str):
                 errors[key] = self.error_message("invalid_key")
@@ -369,11 +402,15 @@ class Mapping(Validator):
 
     def __init__(
         self,
-        keys: Validator = None,
-        values: Validator = None,
-        min_items: int = None,
-        max_items: int = None,
-        cast: typing.Callable = None,
+        keys: typing.Optional[Validator] = None,
+        values: typing.Optional[Validator] = None,
+        min_items: typing.Optional[int] = None,
+        max_items: typing.Optional[int] = None,
+        cast: typing.Optional[
+            typing.Callable[
+                [typing.Mapping[object, object]], typing.Mapping[object, object]
+            ]
+        ] = None,
     ):
 
         assert keys is None or isinstance(keys, Validator)
@@ -382,13 +419,15 @@ class Mapping(Validator):
         assert max_items is None or isinstance(max_items, int)
         assert cast is None or callable(cast)
 
-        self.keys = None if isinstance(keys, Any) else keys
-        self.values = None if isinstance(values, Any) else values
+        self.keys = keys
+        self.values = values
         self.min_items = min_items
         self.max_items = max_items
         self.cast = cast
 
-    def validate(self, value, allow_coerce=False):
+    def validate(
+        self, value: object, allow_coerce: bool = False
+    ) -> typing.Mapping[object, object]:
         if not isinstance(value, dict):
             self.error("type")
 
@@ -437,15 +476,15 @@ class Array(Validator):
         "unique_items": "This item is not unique.",
     }
 
-    items: typing.Union[Validator, typing.Sequence[Validator]]
-
     def __init__(
         self,
-        items: typing.Union[Validator, typing.Sequence[Validator]] = None,
-        min_items: int = None,
-        max_items: int = None,
+        items: typing.Union[None, Validator, typing.Sequence[Validator]] = None,
+        min_items: typing.Optional[int] = None,
+        max_items: typing.Optional[int] = None,
         unique_items: bool = False,
-        cast: typing.Callable = None,
+        cast: typing.Optional[
+            typing.Callable[[typing.Sequence[object]], typing.Sequence[object]]
+        ] = None,
     ):
         assert (
             items is None
@@ -462,16 +501,15 @@ class Array(Validator):
 
         self.unique_items = unique_items
         self.cast = cast
-
+        self.items = items
+        self.min_items = min_items
+        self.max_items = max_items
         if isinstance(items, typing.Sequence):
-            self.items = tuple(items)
-            self.min_items = self.max_items = len(self.items)
-        else:
-            self.items = items
-            self.min_items = min_items
-            self.max_items = max_items
+            self.min_items = self.max_items = len(items)
 
-    def validate(self, value, allow_coerce=False):
+    def validate(
+        self, value: object, allow_coerce: bool = False
+    ) -> typing.Sequence[object]:
         if not isinstance(value, list):
             self.error("type")
 
@@ -484,15 +522,21 @@ class Array(Validator):
         if self.unique_items:
             seen_items = Uniqueness()
 
+        if isinstance(self.items, typing.Sequence):
+            indexed: typing.Optional[typing.Sequence[Validator]] = self.items
+            validator = None
+        else:
+            indexed = None
+            validator = self.items
+
         validated = []
-        multiple_item_types = isinstance(self.items, tuple)
         for pos, item in enumerate(value):
             try:
-                if multiple_item_types:
-                    item = self.items[pos].validate(item, allow_coerce)
-                elif self.items is not None:
+                if indexed is not None:
+                    item = indexed[pos].validate(item, allow_coerce)
+                elif validator is not None:
                     # noinspection PyUnresolvedReferences
-                    item = self.items.validate(item)
+                    item = validator.validate(item, allow_coerce)
 
                 if self.unique_items:
                     # noinspection PyUnboundLocalVariable
@@ -526,18 +570,18 @@ class Uniqueness:
     TRUE = object()
     FALSE = object()
 
-    def __init__(self):
-        self._set = set()
+    def __init__(self) -> None:
+        self._set: typing.Set[object] = set()
 
-    def __contains__(self, item):
+    def __contains__(self, item: object) -> bool:
         item = self.make_hashable(item)
         return item in self._set
 
-    def add(self, item):
+    def add(self, item: object) -> None:
         item = self.make_hashable(item)
         self._set.add(item)
 
-    def make_hashable(self, element):
+    def make_hashable(self, element: object) -> object:
         """
         Coerce a primitive into a uniquely hashable type, for uniqueness checks.
         """

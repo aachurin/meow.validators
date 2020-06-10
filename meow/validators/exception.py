@@ -20,13 +20,16 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
+import typing
+
 
 class ValidationError(ValueError):
-    def __init__(self, detail=None):
-        self.detail = detail
+    def __init__(self, detail: typing.Union[object, typing.Dict[str, object]]):
+        self.detail: typing.Union[object, typing.Dict[str, object]] = detail
         super().__init__(detail)
 
-    def as_dict(self):
-        if isinstance(self.detail, str):
+    def as_dict(self) -> typing.Dict[str, object]:
+        if isinstance(self.detail, typing.Mapping):
+            return dict(self.detail)
+        else:
             return {"": self.detail}
-        return dict(self.detail)

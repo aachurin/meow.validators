@@ -25,7 +25,7 @@ import typing
 
 class ValidationError(ValueError):
     def __init__(self, detail: typing.Union[object, typing.Dict[str, object]]):
-        self.detail: typing.Union[object, typing.Dict[str, object]] = detail
+        self.detail = detail
         super().__init__(detail)
 
     def as_dict(self) -> typing.Dict[str, object]:

@@ -26,10 +26,12 @@ import datetime
 import uuid
 import typing
 import enum
+import collections.abc
 from dataclasses import field as _field, fields, is_dataclass, MISSING
+from typing import get_origin, get_args
 from .elements import (
-    Validator,
     Any,
+    Validator,
     String,
     Integer,
     Float,
@@ -39,12 +41,22 @@ from .elements import (
     Date,
     UUID,
     Enum,
-    Object,
+    TypedObject,
     Mapping,
-    Array,
+    TypedMapping,
+    List,
+    TypedList,
+    Tuple,
+    TypedTuple,
+    Set,
+    FrozenSet,
     Optional,
     Union,
 )
+
+
+_T = typing.TypeVar("_T")
+_T_co = typing.TypeVar("_T_co", covariant=True)
 
 
 def field(  # type: ignore
@@ -68,17 +80,14 @@ def field(  # type: ignore
     )
 
 
-CachedConstructor = typing.Tuple[
-    typing.Type[Validator], typing.Optional[typing.Mapping[str, object]], bool
-]
-Constructor = typing.Tuple[
-    typing.Type[Validator], typing.Optional[typing.Mapping[str, object]]
+_Factory = typing.Callable[..., Validator[typing.Any]]
+_Callback = typing.Callable[
+    [typing.Type[object], typing.Tuple[Validator[typing.Any], ...]], _Factory,
 ]
 
 
 class Container:
-    _primitive_types = {
-        typing.Any: Any,
+    _builtins: typing.Dict[typing.Type[typing.Any], _Factory] = {
         str: String,
         float: Float,
         int: Integer,
@@ -87,184 +96,169 @@ class Container:
         datetime.time: Time,
         datetime.date: Date,
         uuid.UUID: UUID,
+        set: (lambda items=Any, **spec: Set(items, **spec)),
+        frozenset: (lambda items=Any, **spec: FrozenSet(items, **spec)),
+        list: (lambda items=Any, **spec: List(items, **spec)),
+        dict: (lambda keys=Any, values=Any, **spec: Mapping(keys, values, **spec)),
+        tuple: (lambda items=Any, **spec: Tuple(items, **spec)),
+        collections.abc.Sequence: (lambda items=Any, **spec: Tuple(items, **spec)),
+        collections.abc.MutableSequence: (
+            lambda items=Any, **spec: Tuple(items, **spec)
+        ),
+        collections.abc.Set: (lambda items=Any, **spec: FrozenSet(items, **spec)),
+        collections.abc.MutableSet: (lambda items=Any, **spec: Set(items, **spec)),
+        collections.abc.Mapping: (
+            lambda keys=Any, values=Any, **spec: Mapping(keys, values, **spec)
+        ),
     }
 
-    _lookup_cache: typing.Dict[typing.Type[object], Validator]
-    _type_cache: typing.Dict[typing.Type[object], CachedConstructor]
+    _lookup_cache: dict  # type: ignore
 
     def __init__(
-        self,
-        lookup_cache_size: int = 5000,
-        type_cache_size: int = 2500,
-        default: typing.Optional[
-            typing.Callable[[typing.Type[object]], Constructor]
-        ] = None,
+        self, lookup_cache_size: int = 5000, default: typing.Optional[_Callback] = None,
     ):
         self._lookup_cache = {}
-        self._type_cache = {}
         self._lookup_cache_size = lookup_cache_size
-        self._type_cache_size = type_cache_size
         self._default = default
 
-    @classmethod
-    def is_primitive_type(cls, tp: typing.Type[object]) -> bool:
-        return tp in cls._primitive_types
+    # @classmethod
+    # def is_primitive_type(cls, tp: typing.Type[object]) -> bool:
+    #     return tp in cls._builtin_primitives
+    #
+    # @staticmethod
+    # def is_enum_type(tp: typing.Type[object]) -> bool:
+    #     return isinstance(tp, type) and issubclass(tp, enum.Enum)
+    #
+    # @staticmethod
+    # def is_dataclass_type(tp: typing.Type[object]) -> bool:
+    #     return isinstance(tp, type) and is_dataclass(tp)
 
-    @staticmethod
-    def is_dataclass_type(tp: typing.Type[object]) -> bool:
-        return isinstance(tp, type) and is_dataclass(tp)
+    @typing.overload
+    def get_validator(self, tp: typing.Type[_T]) -> Validator[_T]:
+        ...  # pragma: nocover
 
-    @staticmethod
-    def is_enum_type(tp: typing.Type[object]) -> bool:
-        return isinstance(tp, type) and issubclass(tp, enum.Enum)
+    @typing.overload
+    def get_validator(self, tp: _T) -> Validator[_T]:
+        ...  # pragma: nocover
 
-    def get_validator(self, tp: typing.Type[object]) -> Validator:
+    def get_validator(self, tp):  # type: ignore
         try:
             return self._lookup_cache[tp]
         except KeyError:
             pass
-        validator = self._lookup_cache[tp] = self._make_validator(tp)
+        validator = self._lookup_cache[tp] = self._get_validator(tp, {})
         if len(self._lookup_cache) > self._lookup_cache_size:  # pragma: nocover
             self._lookup_cache.pop(next(iter(self._lookup_cache)))
         return validator
 
     __getitem__ = get_validator
 
-    def get_validator_parametrized(
-        self, tp: typing.Type[object], **params: object
-    ) -> Validator:
-        return self._make_validator(tp, params) if params else self.get_validator(tp)
+    @typing.overload
+    def get_validator_spec(self, tp: typing.Type[_T], **spec: object) -> Validator[_T]:
+        ...  # pragma: nocover
 
-    __call__ = get_validator_parametrized
+    @typing.overload
+    def get_validator_spec(self, tp: _T, **spec: object) -> Validator[_T]:
+        ...  # pragma: nocover
 
-    def _make_validator(
-        self,
-        tp: typing.Type[object],
-        params: typing.Optional[typing.Mapping[str, object]] = None,
-    ) -> Validator:
-        cls, initial, optional = self._get_constructor(tp)
+    def get_validator_spec(self, tp, **spec):  # type: ignore
+        return self._get_validator(tp, spec)
 
-        if params and initial:
-            # noinspection PyArgumentList
-            ret = cls(**{**initial, **params})  # type: ignore
-        elif params:
-            # noinspection PyArgumentList
-            ret = cls(**params)  # type: ignore
-        elif initial:
-            # noinspection PyArgumentList
-            ret = cls(**initial)  # type: ignore
-        else:
-            ret = cls()
+    __call__ = get_validator_spec
 
-        if optional:
-            return Optional(ret)
-        return ret
+    @typing.overload
+    def _get_validator(
+        self, tp: typing.Type[_T], spec: typing.Dict[str, object]
+    ) -> Validator[_T]:
+        ...  # pragma: nocover
 
-    def _get_constructor(self, tp: typing.Type[object]) -> CachedConstructor:
-        try:
-            return self._type_cache[tp]
-        except KeyError:
-            pass
-        if constructor := self._get_maybe_optional(tp):
-            optional = True
-        else:
-            optional = False
-            constructor = self._make_constructor(tp)
-        cls, kwargs = constructor
-        self._type_cache[tp] = cls, kwargs, optional
-        if len(self._type_cache) > self._type_cache_size:  # pragma: nocover
-            self._type_cache.pop(next(iter(self._type_cache)))
-        return cls, kwargs, optional
+    @typing.overload
+    def _get_validator(self, tp: _T, spec: typing.Dict[str, object]) -> Validator[_T]:
+        ...  # pragma: nocover
 
-    def _get_maybe_optional(
-        self, tp: typing.Type[object]
-    ) -> typing.Optional[Constructor]:
-        if typing.get_origin(tp) is typing.Union:
-            type_args = typing.get_args(tp)
-            none_type = type(None)
-            args = tuple(item for item in type_args if item is not none_type)
-            optional = len(args) != len(type_args)
-            if optional:
-                cls, kwargs, _ = self._get_constructor(
-                    args[0] if len(args) == 1 else typing.Union.__getitem__(args)
-                )
-                return cls, kwargs
-        return None
+    def _get_validator(self, tp, spec):  # type: ignore
+        if tp is typing.Any:
+            return Any
 
-    def _make_constructor(self, tp: typing.Type[object]) -> Constructor:
-        if self.is_primitive_type(tp):
-            return self._primitive_types[tp], None
+        if isinstance(tp, type):
+            if factory := self._builtins.get(tp):
+                return factory(**spec)
 
-        if self.is_enum_type(tp):
-            return Enum, {"items": tp}
+            if issubclass(tp, enum.Enum):
+                assert not spec, "Spec for enums is not allowed"
+                # noinspection PyTypeChecker
+                return Enum(items=tp)
 
-        if self.is_dataclass_type(tp):
-            properties = {}
-            required = []
-            # noinspection PyDataclass
-            for fld in fields(tp):
-                if not fld.init:
-                    continue
-                if fld.default is MISSING and fld.default_factory is MISSING:  # type: ignore
-                    required.append(fld.name)
-                properties[fld.name] = self.get_validator_parametrized(
-                    fld.type, **fld.metadata
-                )
-            return Object, {"properties": properties, "required": required, "cast": tp}
+            if is_dataclass(tp):
+                assert not spec, "Spec for dataclasses is not allowed"
+                properties: typing.Dict[str, Validator[typing.Any]] = {}
+                required = []
+                for fld in fields(tp):
+                    if not fld.init:
+                        continue
+                    if fld.default is MISSING and fld.default_factory is MISSING:  # type: ignore
+                        required.append(fld.name)
+                    if fld.metadata:
+                        properties[fld.name] = self._get_validator(
+                            fld.type, dict(fld.metadata)
+                        )
+                    else:
+                        properties[fld.name] = self.get_validator(fld.type)
+                return TypedObject(properties, tp, required=tuple(required))
 
-        origin = typing.get_origin(tp) or tp
-        type_args = typing.get_args(tp)
+            if self._default is not None and (resolved := self._default(tp, ())):
+                # noinspection PyUnboundLocalVariable
+                return resolved(**spec)
 
-        items: typing.Optional[object]
+        elif origin := get_origin(tp):
+            type_args = get_args(tp)
+            items: typing.Any = spec.pop("items", None)
 
-        if origin is typing.Union:
-            items = [self.get_validator(arg) for arg in type_args]
-            return Union, {"items": items}
+            if origin is typing.Union:
+                none_type = type(None)
+                if none_type in type_args:
+                    args = tuple(item for item in type_args if item is not none_type)
+                    inner_tp = (
+                        args[0] if len(args) == 1 else typing.Union.__getitem__(args)
+                    )
+                    if spec:
+                        validator = self._get_validator(inner_tp, spec)
+                    else:
+                        validator = self.get_validator(inner_tp)
+                    return Optional(validator)
+                if items is None:
+                    items = tuple(self.get_validator(arg) for arg in type_args)
+                else:
+                    # simple check, if the developer specifies the inconsistent validators, it's his problem
+                    assert isinstance(items, tuple) and len(items) == len(type_args)
+                assert not spec, "Invalid spec for Union"
+                return Union(items=items)
 
-        if origin is tuple:
-            if not type_args:
-                items = None
-            elif type_args[-1] is ...:
-                items = self.get_validator(type_args[0])
-            else:
-                items = [self.get_validator(arg) for arg in type_args]
-            return Array, {"items": items, "cast": tuple}
+            if origin is tuple:
+                if items is not None:
+                    if type_args and type_args[-1] is not ...:
+                        assert isinstance(items, tuple) and len(items) == len(type_args)
+                        return TypedTuple(items, **spec)
+                elif not type_args:
+                    return Tuple(Any, **spec)
+                elif type_args[-1] is ...:
+                    return Tuple(self.get_validator(type_args[0]), **spec)
+                else:
+                    return TypedTuple(
+                        tuple(self.get_validator(arg) for arg in type_args), **spec
+                    )
 
-        if issubclass(origin, typing.Sequence):
-            if inspect.isabstract(origin) or origin is list:
-                # default cast is list
-                cast = None
-            else:
-                cast = origin
-            items = self.get_validator(type_args[0]) if type_args else None
-            return Array, {"items": items, "cast": cast}
+            # handle other generics
+            if items is None:
+                items = [self.get_validator(type_arg) for type_arg in type_args]
+            if factory := self._builtins.get(origin):
+                return factory(*items, **spec)
 
-        if issubclass(origin, typing.AbstractSet):
-            if inspect.isabstract(origin):
-                cast = set
-            else:
-                cast = origin
-            items = self.get_validator(type_args[0]) if type_args else None
-            return Array, {"items": items, "cast": cast, "unique_items": True}
+            if self._default is not None and (resolved := self._default(tp, items)):
+                return resolved(**spec)
 
-        if issubclass(origin, typing.Mapping):
-            if inspect.isabstract(origin) or origin is dict:
-                # default cast is dict
-                cast = None
-            else:
-                cast = origin
-            keys = self.get_validator(type_args[0]) if type_args else None
-            values = self.get_validator(type_args[1]) if type_args else None
-            return Mapping, {"keys": keys, "values": values, "cast": cast}
-
-        if self._default:
-            return self._default(tp)
-
-        raise TypeError("Don't know how to create validator for type %r" % tp)
+        raise TypeError("Don't know how to create validator for %r" % tp)
 
 
 V = Container()
 get_validator = V.get_validator
-get_validator_with_params = V.get_validator_parametrized
-is_primitive_type = V.is_primitive_type
-is_dataclass_type = V.is_dataclass_type

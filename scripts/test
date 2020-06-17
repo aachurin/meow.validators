@@ -11,7 +11,15 @@ if [ -n "$2" ] ; then
     SOURCE=$2
 fi
 
+${PREFIX}mypy \
+    --config-file=${SOURCE}.mypy_test.ini \
+    --cache-dir=/dev/null \
+    --show-absolute-path \
+    ${SOURCE} | tee ${SOURCE}mypy_tests.txt
+
 ${PREFIX}python -m pytest \
+    -s \
     -p no:cacheprovider \
     --cov ${SOURCE}meow \
-    --cov-report term-missing
+    --cov-report term-missing \
+    --maxfail=2

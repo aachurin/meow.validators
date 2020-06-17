@@ -25,9 +25,6 @@ from .container import (
     V,
     field,
     get_validator,
-    get_validator_with_params,
-    is_primitive_type,
-    is_dataclass_type,
     Container,
 )
 from .elements import (
@@ -42,23 +39,27 @@ from .elements import (
     Time,
     UUID,
     Any,
+    Tuple,
+    TypedTuple,
     Object,
+    TypedObject,
     Mapping,
-    Array,
+    TypedMapping,
+    List,
+    TypedList,
+    Set,
+    FrozenSet,
     Union,
     Enum,
 )
 from .exception import ValidationError
 
 
-__version__ = "1.2"
+__version__ = "1.3"
 __all__ = (
     "V",
     "field",
     "get_validator",
-    "get_validator_with_params",
-    "is_primitive_type",
-    "is_dataclass_type",
     "ValidationError",
     "Validator",
     "Optional",
@@ -71,9 +72,16 @@ __all__ = (
     "Time",
     "UUID",
     "Any",
+    "Tuple",
+    "TypedTuple",
     "Object",
+    "TypedObject",
     "Mapping",
-    "Array",
+    "TypedMapping",
+    "List",
+    "TypedList",
+    "Set",
+    "FrozenSet",
     "Union",
     "Enum",
     "Container",

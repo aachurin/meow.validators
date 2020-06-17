@@ -21,14 +21,13 @@
 # THE SOFTWARE.
 
 
-import inspect
 import datetime
 import uuid
 import typing
 import enum
 import collections.abc
 from dataclasses import field as _field, fields, is_dataclass, MISSING
-from typing import get_origin, get_args
+from .compat import get_origin, get_args
 from .elements import (
     Any,
     Validator,

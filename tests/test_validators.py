@@ -5,6 +5,7 @@ import dataclasses
 import uuid
 import enum
 import inspect
+from collections import OrderedDict
 from meow.validators import *
 from .mypy_test_helper import *
 
@@ -290,10 +291,10 @@ def test_mapping():
     assert validator.validate({"a": 1}) == {"a": 1}
 
     assert isinstance(
-        TypedMapping(String(), String(), converter=typing.OrderedDict).validate(
+        TypedMapping(String(), String(), converter=OrderedDict).validate(
             {"a": "b"}
         ),
-        typing.OrderedDict,
+        OrderedDict,
     )
 
 

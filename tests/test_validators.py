@@ -291,9 +291,7 @@ def test_mapping():
     assert validator.validate({"a": 1}) == {"a": 1}
 
     assert isinstance(
-        TypedMapping(String(), String(), converter=OrderedDict).validate(
-            {"a": "b"}
-        ),
+        TypedMapping(String(), String(), converter=OrderedDict).validate({"a": "b"}),
         OrderedDict,
     )
 

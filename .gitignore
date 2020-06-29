@@ -133,3 +133,5 @@ dmypy.json
 
 # Macos
 .DS_Store
+mypy_tests.txt
+

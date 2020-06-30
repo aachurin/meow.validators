@@ -55,7 +55,7 @@ from .elements import (
 from .exception import ValidationError
 
 
-__version__ = "1.3"
+__version__ = "1.3.1"
 __all__ = (
     "V",
     "field",

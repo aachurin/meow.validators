@@ -7,7 +7,7 @@ import enum
 import inspect
 from collections import OrderedDict
 from meow.validators import *
-from .mypy_test_helper import *
+from mypy_test_helper import *
 
 
 def test_string():
@@ -82,10 +82,10 @@ def test_float():
     assert V[float] is V[float] and V[float] == Float()
     assert V[float].validate(123.4) == 123.4
     assert V[float].validate("123.4", allow_coerce=True) == 123.4
-    revealed_type = reveal_type(V[float])
-    assert revealed_type == "meow.validators.elements.Validator[builtins.float*]"
-    revealed_type = reveal_type(V[float].validate(123))
-    assert revealed_type == "builtins.float*"
+    assert (
+        reveal_type(V[float]) == "meow.validators.elements.Validator[builtins.float*]"
+    )
+    assert reveal_type(V[float].validate(123)) == "builtins.float*"
     with pytest.raises(ValidationError):
         V[float].validate("123.4")
     with pytest.raises(ValidationError):
@@ -125,10 +125,8 @@ def test_bool():
     assert V[bool].validate("true", allow_coerce=True) is True
     assert V[bool].validate("false", allow_coerce=True) is False
 
-    revealed_type = reveal_type(V[bool])
-    assert revealed_type == "meow.validators.elements.Validator[builtins.bool*]"
-    revealed_type = reveal_type(V[bool].validate("1", allow_coerce=True))
-    assert revealed_type == "builtins.bool*"
+    assert reveal_type(V[bool]) == "meow.validators.elements.Validator[builtins.bool*]"
+    assert reveal_type(V[bool].validate("1", allow_coerce=True)) == "builtins.bool*"
 
     with pytest.raises(ValidationError):
         V[bool].validate(None)
@@ -160,12 +158,14 @@ def test_datetime():
         2020, 1, 2, 1, 2, 3, tzinfo=datetime.timezone(datetime.timedelta(seconds=-3600))
     )
 
-    revealed_type = reveal_type(V[datetime.datetime])
-    assert revealed_type == "meow.validators.elements.Validator[datetime.datetime*]"
-    revealed_type = reveal_type(
-        V[datetime.datetime].validate("2020-01-02T01:02:03-01:00")
+    assert (
+        reveal_type(V[datetime.datetime])
+        == "meow.validators.elements.Validator[datetime.datetime*]"
     )
-    assert revealed_type == "datetime.datetime*"
+    assert (
+        reveal_type(V[datetime.datetime].validate("2020-01-02T01:02:03-01:00"))
+        == "datetime.datetime*"
+    )
 
     with pytest.raises(ValidationError):
         V[datetime.datetime].validate(None)
@@ -179,10 +179,11 @@ def test_date():
     assert V[datetime.date] is V[datetime.date] and V[datetime.date] == Date()
     assert V[datetime.date].validate("2020-01-02") == datetime.date(2020, 1, 2)
 
-    revealed_type = reveal_type(V[datetime.date])
-    assert revealed_type == "meow.validators.elements.Validator[datetime.date*]"
-    revealed_type = reveal_type(V[datetime.date].validate("2020-01-02"))
-    assert revealed_type == "datetime.date*"
+    assert (
+        reveal_type(V[datetime.date])
+        == "meow.validators.elements.Validator[datetime.date*]"
+    )
+    assert reveal_type(V[datetime.date].validate("2020-01-02")) == "datetime.date*"
 
     with pytest.raises(ValidationError):
         V[datetime.date].validate(None)
@@ -196,10 +197,11 @@ def test_time():
     assert V[datetime.time] is V[datetime.time] and V[datetime.time] == Time()
     assert V[datetime.time].validate("01:02:03") == datetime.time(1, 2, 3)
 
-    revealed_type = reveal_type(V[datetime.time])
-    assert revealed_type == "meow.validators.elements.Validator[datetime.time*]"
-    revealed_type = reveal_type(V[datetime.time].validate("01:02:03"))
-    assert revealed_type == "datetime.time*"
+    assert (
+        reveal_type(V[datetime.time])
+        == "meow.validators.elements.Validator[datetime.time*]"
+    )
+    assert reveal_type(V[datetime.time].validate("01:02:03")) == "datetime.time*"
 
     with pytest.raises(ValidationError):
         V[datetime.time].validate(None)
@@ -215,12 +217,11 @@ def test_uuid():
         "8dd8ceb7-3d5c-4f46-b932-e7ba4078f7cf"
     )
 
-    revealed_type = reveal_type(V[uuid.UUID])
-    assert revealed_type == "meow.validators.elements.Validator[uuid.UUID*]"
-    revealed_type = reveal_type(
-        V[uuid.UUID].validate("8dd8ceb7-3d5c-4f46-b932-e7ba4078f7cf")
+    assert reveal_type(V[uuid.UUID]) == "meow.validators.elements.Validator[uuid.UUID*]"
+    assert (
+        reveal_type(V[uuid.UUID].validate("8dd8ceb7-3d5c-4f46-b932-e7ba4078f7cf"))
+        == "uuid.UUID*"
     )
-    assert revealed_type == "uuid.UUID*"
 
     with pytest.raises(ValidationError):
         V[uuid.UUID].validate(None)
@@ -259,12 +260,11 @@ def test_mapping():
     assert V[dict] is V[dict] and V[dict] == Mapping(Any, Any)
     assert V[dict].validate({"a": 10}) == {"a": 10}
 
-    revealed_type = reveal_type(V[dict])
     assert (
-        revealed_type == "meow.validators.elements.Validator[builtins.dict*[Any, Any]]"
+        reveal_type(V[dict])
+        == "meow.validators.elements.Validator[builtins.dict*[Any, Any]]"
     )
-    revealed_type = reveal_type(V[dict].validate({"a": 10}))
-    assert revealed_type == "builtins.dict*[Any, Any]"
+    assert reveal_type(V[dict].validate({"a": 10})) == "builtins.dict*[Any, Any]"
 
     with pytest.raises(ValidationError):
         V[dict].validate("asd")
@@ -276,13 +276,14 @@ def test_mapping():
         validator.validate({"a": 10, "b": 10, "c": 10, "d": 10})
 
     validator = V[typing.Mapping[str, int]]
-    revealed_type = reveal_type(validator)
     assert (
-        revealed_type
+        reveal_type(validator)
         == "meow.validators.elements.Validator[def () -> typing.Mapping[builtins.str*, builtins.int*]]"
     )
-    revealed_type = reveal_type(validator.validate({"a": 10}))
-    assert revealed_type == "def () -> typing.Mapping[builtins.str*, builtins.int*]"
+    assert (
+        reveal_type(validator.validate({"a": 10}))
+        == "def () -> typing.Mapping[builtins.str*, builtins.int*]"
+    )
 
     with pytest.raises(ValidationError):
         validator.validate({"a": "b"})
@@ -310,10 +311,11 @@ def test_list():
     with pytest.raises(ValidationError):
         V[list].validate("asd")
 
-    revealed_type = reveal_type(V[list])
-    assert revealed_type == "meow.validators.elements.Validator[builtins.list*[Any]]"
-    revealed_type = reveal_type(V[list].validate([]))
-    assert revealed_type == "builtins.list*[Any]"
+    assert (
+        reveal_type(V[list])
+        == "meow.validators.elements.Validator[builtins.list*[Any]]"
+    )
+    assert reveal_type(V[list].validate([])) == "builtins.list*[Any]"
 
     validator = List(Any, min_items=2, max_items=3)
 
@@ -326,9 +328,8 @@ def test_list():
     with pytest.raises(ValidationError):
         validator.validate(["a", 1])
     assert validator.validate(["a", "b"]) == ["a", "b"]
-    revealed_type = reveal_type(validator)
     assert (
-        revealed_type
+        reveal_type(validator)
         == "meow.validators.elements.Validator[builtins.list*[builtins.str*]]"
     )
 
@@ -431,9 +432,9 @@ def test_enum():
 
     assert (
         reveal_type(V[Enum1])
-        == "meow.validators.elements.Validator[tests.test_validators.Enum1*]"
+        == "meow.validators.elements.Validator[test_validators.Enum1*]"
     )
-    assert reveal_type(V[Enum1].validate("A")) == "tests.test_validators.Enum1*"
+    assert reveal_type(V[Enum1].validate("A")) == "test_validators.Enum1*"
 
     with pytest.raises(ValidationError):
         V[Enum1].validate("C")
@@ -497,10 +498,7 @@ def test_dataclasses():
             "e": "22",
         }
     ) == C(a=(A(x="aaa"), B(i=1, j=1.1)), b="ccc", d=("xxx", "x", 2), e="22")
-    assert (
-        reveal_type(V[C])
-        == "meow.validators.elements.Validator[tests.test_validators.C*]"
-    )
+    assert reveal_type(V[C]) == "meow.validators.elements.Validator[test_validators.C*]"
 
     with pytest.raises(ValidationError):
         V[C].validate({})
@@ -550,11 +548,9 @@ def test_default():
     assert V[SpecialType].validate(1) == 1
     assert (
         reveal_type(V[SpecialType])
-        == "meow.validators.elements.Validator[tests.test_validators.SpecialType*]"
+        == "meow.validators.elements.Validator[test_validators.SpecialType*]"
     )
-    assert (
-        reveal_type(V[SpecialType].validate(1)) == "tests.test_validators.SpecialType*"
-    )
+    assert reveal_type(V[SpecialType].validate(1)) == "test_validators.SpecialType*"
 
     assert V[MyGenericType[int]]
 

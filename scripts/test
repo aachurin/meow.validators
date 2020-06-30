@@ -15,7 +15,7 @@ ${PREFIX}mypy \
     --config-file=${SOURCE}.mypy_test.ini \
     --cache-dir=/dev/null \
     --show-absolute-path \
-    ${SOURCE} | tee ${SOURCE}mypy_tests.txt
+    ${SOURCE}/tests | tee ${SOURCE}mypy_tests.txt
 
 ${PREFIX}python -m pytest \
     -s \

@@ -432,9 +432,9 @@ def test_enum():
 
     assert (
         reveal_type(V[Enum1])
-        == "meow.validators.elements.Validator[test_validators.Enum1*]"
+        == "meow.validators.elements.Validator[tests.test_validators.Enum1*]"
     )
-    assert reveal_type(V[Enum1].validate("A")) == "test_validators.Enum1*"
+    assert reveal_type(V[Enum1].validate("A")) == "tests.test_validators.Enum1*"
 
     with pytest.raises(ValidationError):
         V[Enum1].validate("C")
@@ -498,7 +498,10 @@ def test_dataclasses():
             "e": "22",
         }
     ) == C(a=(A(x="aaa"), B(i=1, j=1.1)), b="ccc", d=("xxx", "x", 2), e="22")
-    assert reveal_type(V[C]) == "meow.validators.elements.Validator[test_validators.C*]"
+    assert (
+        reveal_type(V[C])
+        == "meow.validators.elements.Validator[tests.test_validators.C*]"
+    )
 
     with pytest.raises(ValidationError):
         V[C].validate({})
@@ -548,9 +551,11 @@ def test_default():
     assert V[SpecialType].validate(1) == 1
     assert (
         reveal_type(V[SpecialType])
-        == "meow.validators.elements.Validator[test_validators.SpecialType*]"
+        == "meow.validators.elements.Validator[tests.test_validators.SpecialType*]"
     )
-    assert reveal_type(V[SpecialType].validate(1)) == "test_validators.SpecialType*"
+    assert (
+        reveal_type(V[SpecialType].validate(1)) == "tests.test_validators.SpecialType*"
+    )
 
     assert V[MyGenericType[int]]
 

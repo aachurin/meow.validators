@@ -564,3 +564,11 @@ def test_default():
 
     with pytest.raises(TypeError):
         assert V[typing.Generic[int, int]]
+
+
+def test_const():
+    assert Const(1).validate(1) == 1
+    with pytest.raises(ValidationError):
+        Const(1).validate("1")
+    with pytest.raises(ValidationError):
+        Const(None).validate("1")

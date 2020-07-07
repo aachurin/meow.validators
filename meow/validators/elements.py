@@ -304,6 +304,20 @@ class UUID(Validator[uuid.UUID]):
             self.error("type")
 
 
+class Const(Validator[typing.Any]):
+    errors = {"only_null": "Must be null.", "const": "Must be the value '{const}'."}
+
+    def __init__(self, const: typing.Any):
+        self.const = const
+
+    def validate(self, value: object, allow_coerce: bool = False) -> typing.Any:
+        if value != self.const:
+            if self.const is None:
+                self.error("only_null")
+            self.error("const", const=self.const)
+        return self.const
+
+
 class _Any(Validator[typing.Any]):
     def validate(self, value: object, allow_coerce: bool = False) -> typing.Any:
         return value

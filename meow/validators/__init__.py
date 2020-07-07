@@ -38,6 +38,7 @@ from .elements import (
     Date,
     Time,
     UUID,
+    Const,
     Any,
     Tuple,
     TypedTuple,
@@ -55,7 +56,7 @@ from .elements import (
 from .exception import ValidationError
 
 
-__version__ = "1.3.1"
+__version__ = "1.3.2"
 __all__ = (
     "V",
     "field",
@@ -71,6 +72,7 @@ __all__ = (
     "Date",
     "Time",
     "UUID",
+    "Const",
     "Any",
     "Tuple",
     "TypedTuple",

@@ -52,11 +52,12 @@ from .elements import (
     FrozenSet,
     Union,
     Enum,
+    Choice,
 )
 from .exception import ValidationError
 
 
-__version__ = "1.3.2"
+__version__ = "1.3.3"
 __all__ = (
     "V",
     "field",
@@ -86,5 +87,6 @@ __all__ = (
     "FrozenSet",
     "Union",
     "Enum",
+    "Choice",
     "Container",
 )

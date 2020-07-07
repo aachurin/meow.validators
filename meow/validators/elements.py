@@ -335,12 +335,14 @@ class Union(Validator[typing.Any]):
         self.items = items
 
     def validate(self, value: object, allow_coerce: bool = False) -> typing.Any:
+        errors = []
         for item in self.items:
             try:
                 return item.validate(value, allow_coerce)
-            except ValidationError:
-                pass
-        self.error("union")
+            except ValidationError as exc:
+                errors.append(exc.detail)
+                continue
+        raise ValidationError(errors)
 
 
 class Enumeration(typing.Protocol[_T_co]):
@@ -365,6 +367,18 @@ class Enum(Validator[_T]):
         except KeyError:
             enum = [str(getattr(x, "name", x)) for x in self.items]
             self.error("choice", enum=", ".join(enum))
+
+
+class Choice(Validator[_T]):
+    errors = {"choice": "Must be one of {choices}."}
+
+    def __init__(self, items: typing.Collection[_T]):
+        self.items = items
+
+    def validate(self, value: object, allow_coerce: bool = False) -> _T:
+        if value not in self.items:
+            self.error("choice", choices=", ".join(repr(x) for x in self.items))
+        return value  # type: ignore
 
 
 class _MappingMixin(typing.Generic[_K, _V]):

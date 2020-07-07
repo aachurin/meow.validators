@@ -244,8 +244,9 @@ def test_union():
     assert V[typing.Union[str, int]] == Union((String(), Integer()))
     assert V[typing.Union[str, int]].validate("asd") == "asd"
     assert V[typing.Union[str, int]].validate(123) == 123
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError) as e:
         V[typing.Union[str, int]].validate(123.3)
+    assert e.value.as_dict() == {"": ["Must be a string.", "Must be an integer."]}
 
 
 def test_any():
@@ -572,3 +573,12 @@ def test_const():
         Const(1).validate("1")
     with pytest.raises(ValidationError):
         Const(None).validate("1")
+
+
+def test_choice():
+    choices = ["a", "b"]
+    assert reveal_type(Choice(choices).validate("a")) == "builtins.str*"
+    assert Choice(choices).validate("a") == "a"
+
+    with pytest.raises(ValidationError):
+        Choice(choices).validate("C")

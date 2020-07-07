@@ -224,12 +224,14 @@ class Container:
                         validator = self.get_validator(inner_tp)
                     return Optional(validator)
                 if items is None:
-                    items = tuple(self.get_validator(arg) for arg in type_args)
+                    items = [self.get_validator(arg) for arg in type_args]
                 else:
                     # simple check, if the developer specifies the inconsistent validators, it's his problem
-                    assert isinstance(items, tuple) and len(items) == len(type_args)
+                    assert isinstance(items, (list, tuple)) and len(items) == len(
+                        type_args
+                    )
                 assert not spec, "Invalid spec for Union"
-                return Union(items=items)
+                return Union(*items)
 
             if origin is tuple:
                 if items is not None:

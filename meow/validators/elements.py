@@ -330,8 +330,8 @@ class Union(Validator[typing.Any]):
     # variadic generics is not supported (
     errors = {"union": "Must match one of the union types."}
 
-    def __init__(self, items: typing.Tuple[Validator[typing.Any], ...]):
-        assert isinstance(items, tuple) and all(isinstance(k, Validator) for k in items)
+    def __init__(self, *items: Validator[typing.Any]):
+        assert all(isinstance(k, Validator) for k in items)
         self.items = items
 
     def validate(self, value: object, allow_coerce: bool = False) -> typing.Any:

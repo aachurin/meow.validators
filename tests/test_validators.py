@@ -241,7 +241,7 @@ def test_optional():
 
 def test_union():
     assert V[typing.Union[str, int]] is V[typing.Union[str, int]]
-    assert V[typing.Union[str, int]] == Union((String(), Integer()))
+    assert V[typing.Union[str, int]] == Union(String(), Integer())
     assert V[typing.Union[str, int]].validate("asd") == "asd"
     assert V[typing.Union[str, int]].validate(123) == 123
     with pytest.raises(ValidationError) as e:
@@ -486,7 +486,7 @@ def test_dataclasses():
             "b": String(min_length=2),
             "c": Optional(Mapping(String(), String(), min_items=2)),
             "d": TypedTuple((String(), String(min_length=1), Integer(maximum=3))),
-            "e": Union((Integer(), String(min_length=1))),
+            "e": Union(Integer(), String(min_length=1)),
         },
         converter=C,
         required=("a", "b", "d", "e"),

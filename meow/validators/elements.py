@@ -77,41 +77,41 @@ class String(Validator[str]):
     errors = {
         "type": "Must be a string.",
         "blank": "Must not be blank.",
-        "max_length": "Must have no more than {max_length} characters.",
-        "min_length": "Must have at least {min_length} characters.",
-        "pattern": "Must match the pattern /{pattern}/.",
+        "maxlength": "Must have no more than {value} characters.",
+        "minlength": "Must have at least {value} characters.",
+        "pattern": "Must match the pattern /{value}/.",
     }
 
     def __init__(
         self,
-        min_length: typing.Optional[object] = None,
-        max_length: typing.Optional[object] = None,
+        minlength: typing.Optional[object] = None,
+        maxlength: typing.Optional[object] = None,
         pattern: typing.Optional[object] = None,
     ):
 
-        assert max_length is None or isinstance(max_length, int)
-        assert min_length is None or isinstance(min_length, int)
+        assert maxlength is None or isinstance(maxlength, int)
+        assert minlength is None or isinstance(minlength, int)
         assert pattern is None or isinstance(pattern, str)
 
-        self.max_length: typing.Optional[int] = max_length
-        self.min_length: typing.Optional[int] = min_length
+        self.maxlength: typing.Optional[int] = maxlength
+        self.minlength: typing.Optional[int] = minlength
         self.pattern: typing.Optional[str] = pattern
 
     def validate(self, value: object, allow_coerce: bool = False) -> str:
         if not isinstance(value, str):
             self.error("type")
 
-        if self.min_length is not None and len(value) < self.min_length:
-            if self.min_length == 1:
+        if self.minlength is not None and len(value) < self.minlength:
+            if self.minlength == 1:
                 self.error("blank")
             else:
-                self.error("min_length", min_length=self.min_length)
+                self.error("minlength", value=self.minlength)
 
-        if self.max_length is not None and len(value) > self.max_length:
-            self.error("max_length", max_length=self.max_length)
+        if self.maxlength is not None and len(value) > self.maxlength:
+            self.error("maxlength", value=self.maxlength)
 
         if self.pattern is not None and not re.search(self.pattern, value):
-            self.error("pattern", pattern=self.pattern)
+            self.error("pattern", value=self.pattern)
 
         return value
 
@@ -120,31 +120,33 @@ class NumericType(Validator[_T]):
     errors = {
         "type": "Must be a number.",
         "integer": "Must be an integer.",
-        "minimum": "Must be greater than or equal to {value}.",
-        "exclusive_minimum": "Must be greater than {value}.",
-        "maximum": "Must be less than or equal to {value}.",
-        "exclusive_maximum": "Must be less than {value}.",
+        "gte": "Must be greater than or equal to {value}.",
+        "gt": "Must be greater than {value}.",
+        "lte": "Must be less than or equal to {value}.",
+        "lt": "Must be less than {value}.",
     }
 
     numeric_type: typing.ClassVar[typing.Type[_T]]
 
     def __init__(
         self,
-        minimum: typing.Optional[object] = None,
-        maximum: typing.Optional[object] = None,
-        exclusive_minimum: object = False,
-        exclusive_maximum: object = False,
+        lt: typing.Optional[_T] = None,
+        gt: typing.Optional[_T] = None,
+        lte: typing.Optional[_T] = None,
+        gte: typing.Optional[_T] = None,
     ):
 
-        assert minimum is None or isinstance(minimum, (int, float))
-        assert maximum is None or isinstance(maximum, (int, float))
-        assert isinstance(exclusive_minimum, bool)
-        assert isinstance(exclusive_maximum, bool)
+        assert lt is None or isinstance(lt, (int, float))
+        assert gt is None or isinstance(gt, (int, float))
+        assert lte is None or isinstance(lte, (int, float))
+        assert gte is None or isinstance(gte, (int, float))
+        assert lt is None or lte is None
+        assert gt is None or gte is None
 
-        self.minimum: typing.Optional[float] = minimum
-        self.maximum: typing.Optional[float] = maximum
-        self.exclusive_minimum: bool = exclusive_minimum
-        self.exclusive_maximum: bool = exclusive_maximum
+        self.lt = lt
+        self.gt = gt
+        self.lte = lte
+        self.gte = gte
 
     def validate(self, value: object, allow_coerce: bool = False) -> _T:
         if (
@@ -165,21 +167,19 @@ class NumericType(Validator[_T]):
         except (TypeError, ValueError):
             self.error("type")
 
-        if self.minimum is not None:
-            if self.exclusive_minimum:
-                if value <= self.minimum:
-                    self.error("exclusive_minimum", value=self.minimum)
-            else:
-                if value < self.minimum:
-                    self.error("minimum", value=self.minimum)
+        if self.lt is not None:
+            if not (value < self.lt):
+                self.error("lt", value=self.lt)
+        elif self.lte is not None:
+            if not (value <= self.lte):
+                self.error("lte", value=self.lte)
 
-        if self.maximum is not None:
-            if self.exclusive_maximum:
-                if value >= self.maximum:
-                    self.error("exclusive_maximum", value=self.maximum)
-            else:
-                if value > self.maximum:
-                    self.error("maximum", value=self.maximum)
+        if self.gt is not None:
+            if not (value > self.gt):
+                self.error("gt", value=self.gt)
+        elif self.gte is not None:
+            if not (value >= self.gte):
+                self.error("gte", value=self.lte)
 
         return value
 
@@ -384,8 +384,8 @@ class Choice(Validator[_T]):
 class _MappingMixin(typing.Generic[_K, _V]):
     errors = {
         "type": "Must be an object.",
-        "min_items": "Must have at least {count} items.",
-        "max_items": "Must have no more than {count} items.",
+        "minitems": "Must have at least {count} items.",
+        "maxitems": "Must have no more than {count} items.",
     }
 
     def _validate(
@@ -393,18 +393,18 @@ class _MappingMixin(typing.Generic[_K, _V]):
         value: object,
         keys: typing.Optional[Validator[_K]],
         values: typing.Optional[Validator[_V]],
-        min_items: typing.Optional[int] = None,
-        max_items: typing.Optional[int] = None,
+        minitems: typing.Optional[int] = None,
+        maxitems: typing.Optional[int] = None,
         allow_coerce: bool = False,
     ) -> typing.Mapping[_K, _V]:
         if not isinstance(value, typing.Mapping):
             self.error("type")
 
-        if min_items is not None and len(value) < min_items:
-            self.error("min_items", count=min_items)
+        if minitems is not None and len(value) < minitems:
+            self.error("minitems", count=minitems)
 
-        elif max_items is not None and len(value) > max_items:
-            self.error("max_items", count=max_items)
+        elif maxitems is not None and len(value) > maxitems:
+            self.error("maxitems", count=maxitems)
 
         validated: typing.Dict[_K, _V] = {}
 
@@ -437,23 +437,23 @@ class Mapping(_MappingMixin[_K, _V], Validator[typing.Mapping[_K, _V]]):
         self,
         keys: Validator[_K],
         values: Validator[_V],
-        min_items: typing.Optional[int] = None,
-        max_items: typing.Optional[int] = None,
+        minitems: typing.Optional[int] = None,
+        maxitems: typing.Optional[int] = None,
     ):
         assert isinstance(keys, Validator)
         assert isinstance(values, Validator)
-        assert min_items is None or isinstance(min_items, int)
-        assert max_items is None or isinstance(max_items, int)
+        assert minitems is None or isinstance(minitems, int)
+        assert maxitems is None or isinstance(maxitems, int)
         self.keys = None if keys is Any else keys
         self.values = None if values is Any else values
-        self.min_items = min_items
-        self.max_items = max_items
+        self.minitems = minitems
+        self.maxitems = maxitems
 
     def validate(
         self, value: object, allow_coerce: bool = False
     ) -> typing.Mapping[_K, _V]:
         return self._validate(
-            value, self.keys, self.values, self.min_items, self.max_items, allow_coerce
+            value, self.keys, self.values, self.minitems, self.maxitems, allow_coerce
         )
 
 
@@ -463,19 +463,19 @@ class TypedMapping(_MappingMixin[_K, _V], Validator[_T]):
         keys: Validator[_K],
         values: Validator[_V],
         converter: typing.Type[_T],
-        min_items: typing.Optional[int] = None,
-        max_items: typing.Optional[int] = None,
+        minitems: typing.Optional[int] = None,
+        maxitems: typing.Optional[int] = None,
     ):
         assert isinstance(keys, Validator)
         assert isinstance(values, Validator)
-        assert min_items is None or isinstance(min_items, int)
-        assert max_items is None or isinstance(max_items, int)
+        assert minitems is None or isinstance(minitems, int)
+        assert maxitems is None or isinstance(maxitems, int)
         assert callable(converter)
 
         self.keys = None if keys is Any else keys
         self.values = None if values is Any else values
-        self.min_items = min_items
-        self.max_items = max_items
+        self.minitems = minitems
+        self.maxitems = maxitems
         self.converter = converter
 
     def validate(self, value: object, allow_coerce: bool = False) -> _T:
@@ -484,8 +484,8 @@ class TypedMapping(_MappingMixin[_K, _V], Validator[_T]):
                 value,
                 self.keys,
                 self.values,
-                self.min_items,
-                self.max_items,
+                self.minitems,
+                self.maxitems,
                 allow_coerce,
             )
         )
@@ -578,32 +578,32 @@ class TypedObject(_ObjectMixin, Validator[_T]):
 class _ListMixin(typing.Generic[_T]):
     errors = {
         "type": "Must be an array.",
-        "min_items": "Must have at least {count} items.",
-        "max_items": "Must have no more than {count} items.",
-        "unique_items": "This item is not unique.",
+        "minitems": "Must have at least {count} items.",
+        "maxitems": "Must have no more than {count} items.",
+        "uniqueitems": "This item is not unique.",
     }
 
     def _validate(
         self: _ValidatorMixin,
         value: object,
         items: typing.Optional[Validator[_T]],
-        min_items: typing.Optional[int] = None,
-        max_items: typing.Optional[int] = None,
-        unique_items: bool = False,
+        minitems: typing.Optional[int] = None,
+        maxitems: typing.Optional[int] = None,
+        uniqueitems: bool = False,
         allow_coerce: bool = False,
     ) -> typing.List[_T]:
         if not isinstance(value, list):
             self.error("type")
 
-        if min_items is not None and len(value) < min_items:
-            self.error("min_items", count=min_items)
-        elif max_items is not None and len(value) > max_items:
-            self.error("max_items", count=max_items)
+        if minitems is not None and len(value) < minitems:
+            self.error("minitems", count=minitems)
+        elif maxitems is not None and len(value) > maxitems:
+            self.error("maxitems", count=maxitems)
 
         errors = {}
         validated = []
 
-        if unique_items:
+        if uniqueitems:
             seen_items = Uniqueness()
 
         for pos, item in enumerate(value):
@@ -614,10 +614,10 @@ class _ListMixin(typing.Generic[_T]):
                     errors[pos] = exc.detail
                     continue
 
-            if unique_items:
+            if uniqueitems:
                 # noinspection PyUnboundLocalVariable
                 if item in seen_items:
-                    self.error("unique_items")
+                    self.error("uniqueitems")
                 else:
                     seen_items.add(item)
 
@@ -633,27 +633,27 @@ class List(_ListMixin[_V], Validator[typing.List[_V]]):
     def __init__(
         self,
         items: Validator[_V],
-        min_items: typing.Optional[int] = None,
-        max_items: typing.Optional[int] = None,
-        unique_items: bool = False,
+        minitems: typing.Optional[int] = None,
+        maxitems: typing.Optional[int] = None,
+        uniqueitems: bool = False,
     ):
         assert isinstance(items, Validator)
-        assert min_items is None or isinstance(min_items, int)
-        assert max_items is None or isinstance(max_items, int)
-        assert isinstance(unique_items, bool)
+        assert minitems is None or isinstance(minitems, int)
+        assert maxitems is None or isinstance(maxitems, int)
+        assert isinstance(uniqueitems, bool)
 
         self.items = None if items is Any else items
-        self.min_items = min_items
-        self.max_items = max_items
-        self.unique_items = unique_items
+        self.minitems = minitems
+        self.maxitems = maxitems
+        self.uniqueitems = uniqueitems
 
     def validate(self, value: object, allow_coerce: bool = False) -> typing.List[_V]:
         return self._validate(
             value,
             items=self.items,
-            min_items=self.min_items,
-            max_items=self.max_items,
-            unique_items=self.unique_items,
+            minitems=self.minitems,
+            maxitems=self.maxitems,
+            uniqueitems=self.uniqueitems,
             allow_coerce=allow_coerce,
         )
 
@@ -666,19 +666,19 @@ class TypedList(_ListMixin[_V], Validator[_T]):
         self,
         items: Validator[_V],
         converter: typing.Type[_T],
-        min_items: typing.Optional[int] = None,
-        max_items: typing.Optional[int] = None,
-        unique_items: bool = False,
+        minitems: typing.Optional[int] = None,
+        maxitems: typing.Optional[int] = None,
+        uniqueitems: bool = False,
     ):
         assert isinstance(items, Validator)
-        assert min_items is None or isinstance(min_items, int)
-        assert max_items is None or isinstance(max_items, int)
+        assert minitems is None or isinstance(minitems, int)
+        assert maxitems is None or isinstance(maxitems, int)
         assert callable(converter)
 
         self.items = None if items is Any else items
-        self.min_items = min_items
-        self.max_items = max_items
-        self.unique_items = unique_items
+        self.minitems = minitems
+        self.maxitems = maxitems
+        self.uniqueitems = uniqueitems
         self.converter = converter
 
     def validate(self, value: object, allow_coerce: bool = False) -> _T:
@@ -686,9 +686,9 @@ class TypedList(_ListMixin[_V], Validator[_T]):
             self._validate(
                 value,
                 items=self.items,
-                min_items=self.min_items,
-                max_items=self.max_items,
-                unique_items=self.unique_items,
+                minitems=self.minitems,
+                maxitems=self.maxitems,
+                uniqueitems=self.uniqueitems,
                 allow_coerce=allow_coerce,
             )
         )
@@ -698,31 +698,31 @@ class Tuple(TypedList[_V, typing.Tuple[_V, ...]]):
     def __init__(
         self,
         items: Validator[_V],
-        min_items: typing.Optional[int] = None,
-        max_items: typing.Optional[int] = None,
-        unique_items: bool = False,
+        minitems: typing.Optional[int] = None,
+        maxitems: typing.Optional[int] = None,
+        uniqueitems: bool = False,
     ):
-        super().__init__(items, tuple, min_items, max_items, unique_items)
+        super().__init__(items, tuple, minitems, maxitems, uniqueitems)
 
 
 class Set(TypedList[_V, typing.Set[_V]]):
     def __init__(
         self,
         items: Validator[_V],
-        min_items: typing.Optional[int] = None,
-        max_items: typing.Optional[int] = None,
+        minitems: typing.Optional[int] = None,
+        maxitems: typing.Optional[int] = None,
     ):
-        super().__init__(items, set, min_items, max_items, True)
+        super().__init__(items, set, minitems, maxitems, True)
 
 
 class FrozenSet(TypedList[_V, typing.FrozenSet[_V]]):
     def __init__(
         self,
         items: Validator[_V],
-        min_items: typing.Optional[int] = None,
-        max_items: typing.Optional[int] = None,
+        minitems: typing.Optional[int] = None,
+        maxitems: typing.Optional[int] = None,
     ):
-        super().__init__(items, frozenset, min_items, max_items, True)
+        super().__init__(items, frozenset, minitems, maxitems, True)
 
 
 _T_Tup = typing.TypeVar("_T_Tup", bound=typing.Tuple)  # type: ignore

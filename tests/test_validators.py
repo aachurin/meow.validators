@@ -20,9 +20,9 @@ def test_string():
         V[str].validate(123)
     with pytest.raises(ValidationError):
         V[str].validate(None)
-    validator = V(str, min_length=2, max_length=10, pattern="a+")
+    validator = V(str, minlength=2, maxlength=10, pattern="a+")
     assert reveal_type(validator) == "meow.validators.elements.Validator[builtins.str*]"
-    assert validator == String(min_length=2, max_length=10, pattern="a+")
+    assert validator == String(minlength=2, maxlength=10, pattern="a+")
     assert validator.validate("aaa") == "aaa"
     with pytest.raises(ValidationError):
         validator.validate("a")
@@ -31,7 +31,7 @@ def test_string():
     with pytest.raises(ValidationError):
         validator.validate("bbbbb")
     with pytest.raises(ValidationError):
-        String(min_length=1).validate("")
+        String(minlength=1).validate("")
 
 
 def test_int():
@@ -49,8 +49,8 @@ def test_int():
         V[int].validate(True)
     with pytest.raises(ValidationError):
         V[int].validate(None)
-    validator = V(int, minimum=2, maximum=10)
-    assert validator == Integer(minimum=2, maximum=10)
+    validator = V(int, gte=2, lte=10)
+    assert validator == Integer(gte=2, lte=10)
     assert validator.validate(2) == 2
     assert validator.validate(10) == 10
     assert reveal_type(validator) == "meow.validators.elements.Validator[builtins.int*]"
@@ -64,12 +64,8 @@ def test_int():
         validator.validate("asd", allow_coerce=True)
     except ValidationError as e:
         assert e.as_dict() == {"": "Must be a number."}
-    validator = V(
-        int, minimum=2, maximum=10, exclusive_minimum=True, exclusive_maximum=True
-    )
-    assert validator == Integer(
-        minimum=2, maximum=10, exclusive_minimum=True, exclusive_maximum=True
-    )
+    validator = V(int, gt=2, lt=10)
+    assert validator == Integer(gt=2, lt=10)
     assert validator.validate(3) == 3
     assert validator.validate(9) == 9
     with pytest.raises(ValidationError):
@@ -92,20 +88,16 @@ def test_float():
         V[float].validate(True)
     with pytest.raises(ValidationError):
         V[float].validate(None)
-    validator = V(float, minimum=2, maximum=10)
-    assert validator == Float(minimum=2, maximum=10)
+    validator = V(float, gte=2, lte=10)
+    assert validator == Float(gte=2, lte=10)
     assert validator.validate(2) == 2
     assert validator.validate(10) == 10
     with pytest.raises(ValidationError):
         validator.validate(1.999)
     with pytest.raises(ValidationError):
         validator.validate(10.001)
-    validator = V(
-        float, minimum=2, maximum=10, exclusive_minimum=True, exclusive_maximum=True
-    )
-    assert validator == Float(
-        minimum=2, maximum=10, exclusive_minimum=True, exclusive_maximum=True
-    )
+    validator = V(float, gt=2, lt=10)
+    assert validator == Float(gt=2, lt=10)
     assert validator.validate(2.00001) == 2.00001
     assert validator.validate(9.99999) == 9.99999
     with pytest.raises(ValidationError):
@@ -270,7 +262,7 @@ def test_mapping():
     with pytest.raises(ValidationError):
         V[dict].validate("asd")
 
-    validator = Mapping(Any, Any, min_items=2, max_items=3)
+    validator = Mapping(Any, Any, minitems=2, maxitems=3)
     with pytest.raises(ValidationError):
         validator.validate({"a": 10})
     with pytest.raises(ValidationError):
@@ -318,7 +310,7 @@ def test_list():
     )
     assert reveal_type(V[list].validate([])) == "builtins.list*[Any]"
 
-    validator = List(Any, min_items=2, max_items=3)
+    validator = List(Any, minitems=2, maxitems=3)
 
     with pytest.raises(ValidationError):
         validator.validate([1])
@@ -334,7 +326,7 @@ def test_list():
         == "meow.validators.elements.Validator[builtins.list*[builtins.str*]]"
     )
 
-    validator = List(Any, unique_items=True)
+    validator = List(Any, uniqueitems=True)
     with pytest.raises(ValidationError):
         validator.validate(["a", {"a": 1}, {"a": 1}, [1], [1], True, False])
 
@@ -459,12 +451,12 @@ class B:
 @dataclasses.dataclass
 class C:
     a: typing.Tuple[A, B]
-    b: str = field(min_length=2)
+    b: str = field(minlength=2)
     d: typing.Tuple[str, str, int] = field(
-        items=(String(), String(min_length=1), Integer(maximum=3))
+        items=(String(), String(minlength=1), Integer(lte=3))
     )
-    e: typing.Union[int, str] = field(items=(Integer(), String(min_length=1)))
-    c: typing.Optional[typing.Mapping[str, str]] = field(min_items=2, default=None)
+    e: typing.Union[int, str] = field(items=(Integer(), String(minlength=1)))
+    c: typing.Optional[typing.Mapping[str, str]] = field(minitems=2, default=None)
 
 
 def test_dataclasses():
@@ -483,10 +475,10 @@ def test_dataclasses():
                     ),
                 )
             ),
-            "b": String(min_length=2),
-            "c": Optional(Mapping(String(), String(), min_items=2)),
-            "d": TypedTuple((String(), String(min_length=1), Integer(maximum=3))),
-            "e": Union(Integer(), String(min_length=1)),
+            "b": String(minlength=2),
+            "c": Optional(Mapping(String(), String(), minitems=2)),
+            "d": TypedTuple((String(), String(minlength=1), Integer(lte=3))),
+            "e": Union(Integer(), String(minlength=1)),
         },
         converter=C,
         required=("a", "b", "d", "e"),
@@ -540,7 +532,7 @@ class MyGenericType(typing.Generic[T]):
 
 def resolve_default(obj, v_args):
     if obj is SpecialType:
-        return lambda **spec: Integer(minimum=1, maximum=2, **spec)
+        return lambda **spec: Integer(gte=1, lte=2, **spec)
     origin = typing.get_origin(obj)
     if origin is MyGenericType and len(v_args) == 1:
         return lambda **spec: TypedList(v_args[0], converter=MyGenericType, **spec)

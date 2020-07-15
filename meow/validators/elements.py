@@ -75,11 +75,10 @@ class Optional(Validator[typing.Optional[_T]]):
 
 class String(Validator[str]):
     errors = {
-        "type": "Must be a string.",
-        "blank": "Must not be blank.",
-        "maxlength": "Must have no more than {value} characters.",
-        "minlength": "Must have at least {value} characters.",
-        "pattern": "Must match the pattern /{value}/.",
+        "type": "Expected String.",
+        "maxlength": "String {value!r} exceeds maximum length of {maxlength}.",
+        "minlength": "String {value!r} is less than minimum length of {minlength}.",
+        "pattern": "String {value!r} does not match regex pattern /{pattern}/.",
     }
 
     def __init__(
@@ -102,30 +101,18 @@ class String(Validator[str]):
             self.error("type")
 
         if self.minlength is not None and len(value) < self.minlength:
-            if self.minlength == 1:
-                self.error("blank")
-            else:
-                self.error("minlength", value=self.minlength)
+            self.error("minlength", value=value, minlength=self.minlength)
 
         if self.maxlength is not None and len(value) > self.maxlength:
-            self.error("maxlength", value=self.maxlength)
+            self.error("maxlength", value=value, maxlength=self.maxlength)
 
         if self.pattern is not None and not re.search(self.pattern, value):
-            self.error("pattern", value=self.pattern)
+            self.error("pattern", value=value, pattern=self.pattern)
 
         return value
 
 
 class NumericType(Validator[_T]):
-    errors = {
-        "type": "Must be a number.",
-        "integer": "Must be an integer.",
-        "gte": "Must be greater than or equal to {value}.",
-        "gt": "Must be greater than {value}.",
-        "lte": "Must be less than or equal to {value}.",
-        "lt": "Must be less than {value}.",
-    }
-
     numeric_type: typing.ClassVar[typing.Type[_T]]
 
     def __init__(
@@ -140,8 +127,6 @@ class NumericType(Validator[_T]):
         assert gt is None or isinstance(gt, (int, float))
         assert lte is None or isinstance(lte, (int, float))
         assert gte is None or isinstance(gte, (int, float))
-        assert lt is None or lte is None
-        assert gt is None or gte is None
 
         self.lt = lt
         self.gt = gt
@@ -154,7 +139,7 @@ class NumericType(Validator[_T]):
             and isinstance(value, float)
             and not value.is_integer()
         ):
-            self.error("integer")
+            self.error("type")
         elif not allow_coerce and (
             not isinstance(value, (int, float))
             or isinstance(value, bool)
@@ -169,31 +154,49 @@ class NumericType(Validator[_T]):
 
         if self.lt is not None:
             if not (value < self.lt):
-                self.error("lt", value=self.lt)
+                if value == self.lt:
+                    self.error("equal_max", value=value, max=self.lt)
+                self.error("max", value=value, max=self.lt)
         elif self.lte is not None:
             if not (value <= self.lte):
-                self.error("lte", value=self.lte)
+                self.error("max", value=value, max=self.lte)
 
         if self.gt is not None:
             if not (value > self.gt):
-                self.error("gt", value=self.gt)
+                if value == self.gt:
+                    self.error("equal_min", value=value, min=self.gt)
+                self.error("min", value=value, min=self.gt)
         elif self.gte is not None:
             if not (value >= self.gte):
-                self.error("gte", value=self.lte)
+                self.error("min", value=value, min=self.gte)
 
         return value
 
 
 class Float(NumericType[float]):
+    errors = {
+        "type": "Expected Float.",
+        "min": "Float {value} is less then minimum value of {min}.",
+        "equal_min": "Float {value} equals minimum value of {min}.",
+        "max": "Float {value} exceeds maximum value of {max}.",
+        "equal_max": "Float {value} equals maximum value of {max}.",
+    }
     numeric_type = float
 
 
 class Integer(NumericType[int]):
+    errors = {
+        "type": "Expected Integer.",
+        "min": "Integer {value} is less then minimum value of {min}.",
+        "equal_min": "Integer {value} equals minimum value of {min}.",
+        "max": "Integer {value} exceeds maximum value of {max}.",
+        "equal_max": "Integer {value} equals maximum value of {max}.",
+    }
     numeric_type = int
 
 
 class Boolean(Validator[bool]):
-    errors = {"type": "Must be a valid boolean."}
+    errors = {"type": "Expected Boolean."}
 
     values = {
         "on": True,
@@ -217,8 +220,6 @@ class Boolean(Validator[bool]):
 
 
 class DateTimeType(Validator[_T]):
-    errors = {"type": "Must be a valid datetime."}
-
     datetime_pattern: typing.ClassVar[typing.Pattern[str]]
     datetime_type: typing.ClassVar[typing.Type[_T]]
 
@@ -267,6 +268,7 @@ class DateTimeType(Validator[_T]):
 
 
 class DateTime(DateTimeType[datetime.datetime]):
+    errors = {"type": "Expected DateTime."}
     datetime_pattern = re.compile(
         r"(?P<year>\d{4})-(?P<month>\d{1,2})-(?P<day>\d{1,2})"
         r"[T ](?P<hour>\d{1,2}):(?P<minute>\d{1,2})"
@@ -277,6 +279,7 @@ class DateTime(DateTimeType[datetime.datetime]):
 
 
 class Time(DateTimeType[datetime.time]):
+    errors = {"type": "Expected Time."}
     datetime_pattern = re.compile(
         r"(?P<hour>\d{1,2}):(?P<minute>\d{1,2})"
         r"(?::(?P<second>\d{1,2})(?:\.(?P<microsecond>\d{1,6})\d{0,6})?)?"
@@ -285,6 +288,7 @@ class Time(DateTimeType[datetime.time]):
 
 
 class Date(DateTimeType[datetime.date]):
+    errors = {"type": "Expected Date."}
     datetime_pattern = re.compile(
         r"(?P<year>\d{4})-(?P<month>\d{1,2})-(?P<day>\d{1,2})$"
     )
@@ -292,7 +296,7 @@ class Date(DateTimeType[datetime.date]):
 
 
 class UUID(Validator[uuid.UUID]):
-    errors = {"type": "Must be a valid UUID."}
+    errors = {"type": "Expected UUID."}
 
     def validate(self, value: object, allow_coerce: bool = False) -> uuid.UUID:
         if not isinstance(value, str):
@@ -305,7 +309,10 @@ class UUID(Validator[uuid.UUID]):
 
 
 class Const(Validator[typing.Any]):
-    errors = {"only_null": "Must be null.", "const": "Must be the value '{const}'."}
+    errors = {
+        "only_null": "Value does not match null.",
+        "const": "Value does not match {const!r}.",
+    }
 
     def __init__(self, const: typing.Any):
         self.const = const
@@ -327,9 +334,6 @@ Any = _Any()
 
 
 class Union(Validator[typing.Any]):
-    # variadic generics is not supported (
-    errors = {"union": "Must match one of the union types."}
-
     def __init__(self, *items: Validator[typing.Any]):
         assert all(isinstance(k, Validator) for k in items)
         self.items = items
@@ -342,11 +346,11 @@ class Union(Validator[typing.Any]):
             except ValidationError as exc:
                 errors.append(exc.detail)
                 continue
-        raise ValidationError(errors)
+        raise ValidationError({"Union": errors})
 
 
 class Enumeration(typing.Protocol[_T_co]):
-    def __getitem__(self, key: str) -> _T_co:
+    def __getitem__(self, key: typing.Any) -> _T_co:
         ...  # pragma: nocover
 
     def __iter__(self) -> typing.Iterator[_T_co]:
@@ -354,38 +358,42 @@ class Enumeration(typing.Protocol[_T_co]):
 
 
 class Enum(Validator[_T]):
-    errors = {"choice": "Must be one of {enum}.", "type": "Must be a string."}
+    errors = {
+        "choice": "Value {value!r} does not match any of the available choices: {choices}."
+    }
 
     def __init__(self, items: Enumeration[_T]):
         self.items = items
 
     def validate(self, value: object, allow_coerce: bool = False) -> _T:
-        if not isinstance(value, str):
-            self.error("type")
         try:
             return self.items[value]
-        except KeyError:
+        except (KeyError, ValueError, TypeError):
             enum = [str(getattr(x, "name", x)) for x in self.items]
-            self.error("choice", enum=", ".join(enum))
+            self.error("choice", value=value, choices=", ".join(enum))
 
 
 class Choice(Validator[_T]):
-    errors = {"choice": "Must be one of {choices}."}
+    errors = {
+        "choice": "Value {value!r} does not match any of the available choices: {choices}."
+    }
 
     def __init__(self, items: typing.Collection[_T]):
         self.items = items
 
     def validate(self, value: object, allow_coerce: bool = False) -> _T:
         if value not in self.items:
-            self.error("choice", choices=", ".join(repr(x) for x in self.items))
+            self.error(
+                "choice", value=value, choices=", ".join(repr(x) for x in self.items)
+            )
         return value  # type: ignore
 
 
 class _MappingMixin(typing.Generic[_K, _V]):
     errors = {
-        "type": "Must be an object.",
-        "minitems": "Must have at least {count} items.",
-        "maxitems": "Must have no more than {count} items.",
+        "type": "Expected Object.",
+        "minitems": "Object property count {count} is less then minimum count of {minitems}.",
+        "maxitems": "Object property count {count} exceeds maximum count of {maxitems}.",
     }
 
     def _validate(
@@ -401,10 +409,10 @@ class _MappingMixin(typing.Generic[_K, _V]):
             self.error("type")
 
         if minitems is not None and len(value) < minitems:
-            self.error("minitems", count=minitems)
+            self.error("minitems", count=len(value), minitems=minitems)
 
         elif maxitems is not None and len(value) > maxitems:
-            self.error("maxitems", count=maxitems)
+            self.error("maxitems", count=len(value), maxitems=maxitems)
 
         validated: typing.Dict[_K, _V] = {}
 
@@ -493,9 +501,9 @@ class TypedMapping(_MappingMixin[_K, _V], Validator[_T]):
 
 class _ObjectMixin:
     errors = {
-        "type": "Must be an object.",
+        "type": "Expected Object.",
         "invalid_key": "Object keys must be strings.",
-        "required": 'The "{field_name}" field is required.',
+        "required": "Required property is missing.",
     }
 
     def _validate(
@@ -519,7 +527,7 @@ class _ObjectMixin:
         if required:
             for key in required:
                 if key not in value:
-                    errors[key] = self.error_message("required", field_name=key)
+                    errors[key] = self.error_message("required")
 
         for key, child_schema in properties.items():
             if key not in value:
@@ -579,10 +587,10 @@ class TypedObject(_ObjectMixin, Validator[_T]):
 
 class _ListMixin(typing.Generic[_T]):
     errors = {
-        "type": "Must be an array.",
-        "minitems": "Must have at least {count} items.",
-        "maxitems": "Must have no more than {count} items.",
-        "uniqueitems": "This item is not unique.",
+        "type": "Expected Array.",
+        "minitems": "Array item count {count} is less than minimum count of {minitems}.",
+        "maxitems": "Array item count {count} exceeds maximum count of {maxitems}.",
+        "uniqueitems": "Non-unique array item.",
     }
 
     def _validate(
@@ -598,9 +606,9 @@ class _ListMixin(typing.Generic[_T]):
             self.error("type")
 
         if minitems is not None and len(value) < minitems:
-            self.error("minitems", count=minitems)
+            self.error("minitems", count=len(value), minitems=minitems)
         elif maxitems is not None and len(value) > maxitems:
-            self.error("maxitems", count=maxitems)
+            self.error("maxitems", count=len(value), maxitems=maxitems)
 
         errors = {}
         validated = []
@@ -619,7 +627,8 @@ class _ListMixin(typing.Generic[_T]):
             if uniqueitems:
                 # noinspection PyUnboundLocalVariable
                 if item in seen_items:
-                    self.error("uniqueitems")
+                    errors[pos] = self.error_message("uniqueitems")
+                    continue
                 else:
                     seen_items.add(item)
 
@@ -732,18 +741,17 @@ _T_Tup = typing.TypeVar("_T_Tup", bound=typing.Tuple)  # type: ignore
 
 class TypedTuple(Validator[_T_Tup]):
     errors = {
-        "type": "Must be an array.",
-        "exact": "Must have exact {count} items.",
+        "type": "Expected Array.",
+        "minitems": "Array item count {count} is less than minimum count of {minitems}.",
+        "maxitems": "Array item count {count} exceeds maximum count of {maxitems}.",
     }
 
     def __init__(
         self,
-        items: typing.Tuple[Validator[typing.Any], ...],
+        *items: Validator[typing.Any],
         converter: typing.Optional[typing.Type[tuple]] = None,  # type: ignore
     ):
-        assert isinstance(items, tuple) and all(
-            isinstance(item, Validator) for item in items
-        )
+        assert all(isinstance(item, Validator) for item in items)
         assert converter is None or callable(converter)
         self.items = items
         self.converter = converter or tuple
@@ -753,7 +761,10 @@ class TypedTuple(Validator[_T_Tup]):
             self.error("type")
 
         if len(value) != len(self.items):
-            self.error("exact", count=len(self.items))
+            if len(value) < len(self.items):
+                self.error("minitems", count=len(value), minitems=len(self.items))
+            else:
+                self.error("maxitems", count=len(value), maxitems=len(self.items))
 
         errors = {}
         validated = []

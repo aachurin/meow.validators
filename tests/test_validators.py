@@ -63,7 +63,7 @@ def test_int():
     try:
         validator.validate("asd", allow_coerce=True)
     except ValidationError as e:
-        assert e.as_dict() == {"": "Must be a number."}
+        assert e.as_dict() == {"": "Expected Integer."}
     validator = V(int, gt=2, lt=10)
     assert validator == Integer(gt=2, lt=10)
     assert validator.validate(3) == 3
@@ -71,7 +71,11 @@ def test_int():
     with pytest.raises(ValidationError):
         validator.validate(2)
     with pytest.raises(ValidationError):
+        validator.validate(1)
+    with pytest.raises(ValidationError):
         validator.validate(10)
+    with pytest.raises(ValidationError):
+        validator.validate(11)
 
 
 def test_float():
@@ -238,7 +242,7 @@ def test_union():
     assert V[typing.Union[str, int]].validate(123) == 123
     with pytest.raises(ValidationError) as e:
         V[typing.Union[str, int]].validate(123.3)
-    assert e.value.as_dict() == {"": ["Must be a string.", "Must be an integer."]}
+    assert e.value.as_dict() == {"Union": ["Expected String.", "Expected Integer."]}
 
 
 def test_any():
@@ -353,9 +357,9 @@ def test_tuple():
     assert V[typing.Tuple[int, ...]] == Tuple(Integer())
     assert reveal_type(V[typing.Tuple[int, ...]])  # broken in mypy 0.780
 
-    assert V[typing.Tuple[int]] == TypedTuple((Integer(),))
-    assert V[typing.Tuple[int, int]] == TypedTuple((Integer(), Integer()))
-    assert V[typing.Tuple[int, str]] == TypedTuple((Integer(), String()))
+    assert V[typing.Tuple[int]] == TypedTuple(Integer())
+    assert V[typing.Tuple[int, int]] == TypedTuple(Integer(), Integer())
+    assert V[typing.Tuple[int, str]] == TypedTuple(Integer(), String())
 
     assert V[typing.Tuple[int, str]].validate([1, "s"]) == (1, "s")
 
@@ -364,6 +368,12 @@ def test_tuple():
 
     with pytest.raises(ValidationError):
         V[typing.Tuple[int, str]].validate([1, 1])
+
+    with pytest.raises(ValidationError):
+        V[typing.Tuple[int, str]].validate([1, "s", 2])
+
+    with pytest.raises(ValidationError):
+        V[typing.Tuple[int, str]].validate([1])
 
 
 def test_sets():
@@ -464,20 +474,16 @@ def test_dataclasses():
     assert V[C] == TypedObject(
         {
             "a": TypedTuple(
-                (
-                    TypedObject(
-                        {"x": String(), "y": String()}, converter=A, required=("x",)
-                    ),
-                    TypedObject(
-                        {"i": Integer(), "j": Float()},
-                        converter=B,
-                        required=("i", "j"),
-                    ),
-                )
+                TypedObject(
+                    {"x": String(), "y": String()}, converter=A, required=("x",)
+                ),
+                TypedObject(
+                    {"i": Integer(), "j": Float()}, converter=B, required=("i", "j"),
+                ),
             ),
             "b": String(minlength=2),
             "c": Optional(Mapping(String(), String(), minitems=2)),
-            "d": TypedTuple((String(), String(minlength=1), Integer(lte=3))),
+            "d": TypedTuple(String(), String(minlength=1), Integer(lte=3)),
             "e": Union(Integer(), String(minlength=1)),
         },
         converter=C,
@@ -509,8 +515,8 @@ def test_dataclasses():
         V[C].validate({"a": [], "b": "ccc", "e": 1})
     except ValidationError as e:
         assert e.as_dict() == {
-            "a": "Must have exact 2 items.",
-            "d": 'The "d" field is required.',
+            "a": "Array item count 0 is less than minimum count of 2.",
+            "d": "Required property is missing.",
         }
 
 

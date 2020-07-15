@@ -236,15 +236,15 @@ class Container:
             if origin is tuple:
                 if items is not None:
                     if type_args and type_args[-1] is not ...:
-                        assert isinstance(items, tuple) and len(items) == len(type_args)
-                        return TypedTuple(items, **spec)
+                        assert len(items) == len(type_args)
+                        return TypedTuple(*items, **spec)
                 elif not type_args:
                     return Tuple(Any, **spec)
                 elif type_args[-1] is ...:
                     return Tuple(self.get_validator(type_args[0]), **spec)
                 else:
                     return TypedTuple(
-                        tuple(self.get_validator(arg) for arg in type_args), **spec
+                        *(self.get_validator(arg) for arg in type_args), **spec
                     )
 
             # handle other generics

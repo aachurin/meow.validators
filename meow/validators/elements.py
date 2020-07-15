@@ -540,13 +540,15 @@ class Object(_ObjectMixin, Validator[typing.Mapping[str, typing.Any]]):
     def __init__(
         self,
         properties: typing.Mapping[str, Validator[typing.Any]],
-        required: typing.Tuple[str, ...] = (),
+        required: typing.Optional[typing.Tuple[str, ...]] = None,
     ):
         assert all(isinstance(k, str) for k in properties.keys())
         assert all(isinstance(v, Validator) for v in properties.values())
-        assert isinstance(required, tuple) and all(isinstance(i, str) for i in required)
+        assert required is None or (
+            isinstance(required, tuple) and all(isinstance(i, str) for i in required)
+        )
         self.properties = properties
-        self.required = required
+        self.required = tuple(properties.keys()) if required is None else required
 
     def validate(
         self, value: object, allow_coerce: bool = False

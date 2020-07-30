@@ -245,7 +245,21 @@ def test_union():
     )
     with pytest.raises(ValidationError) as e:
         V[typing.Union[str, int]].validate(123.3)
-    assert e.value.as_dict() == {"Union": ["Expected String.", "Expected Integer."]}
+    assert e.value.as_dict() == {"_union": ["Expected String.", "Expected Integer."]}
+
+
+def test_if():
+    validator = If(String(), String(minlength=1), Integer())
+    assert validator.validate(10) == 10
+    assert validator.validate("S") == "S"
+    with pytest.raises(ValidationError) as e:
+        validator.validate("")
+    assert e.value.as_dict() == {"": "String '' is less than minimum length of 1."}
+    validator = If(String(), String(minlength=1))
+    assert validator.validate("S") == "S"
+    with pytest.raises(ValidationError) as e:
+        validator.validate(123)
+    assert e.value.as_dict() == {"": "Expected String."}
 
 
 def test_any():

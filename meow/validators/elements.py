@@ -350,9 +350,32 @@ class Union(Validator[typing.Any]):
             try:
                 return item.validate(value, allow_coerce)
             except ValidationError as exc:
-                errors.append(exc.detail)
+                if exc.detail not in errors:
+                    errors.append(exc.detail)
                 continue
-        raise ValidationError({"Union": errors})
+        raise ValidationError({"_union": errors})
+
+
+class If(Validator[typing.Any]):
+    def __init__(
+        self,
+        cond: Validator[typing.Any],
+        then: Validator[typing.Any],
+        else_: typing.Optional[Validator[typing.Any]] = None,
+    ):
+        self.cond = cond
+        self.then = then
+        self.else_ = else_
+
+    def validate(self, value: object, allow_coerce: bool = False) -> typing.Any:
+        try:
+            self.cond.validate(value, allow_coerce)
+        except ValidationError:
+            if self.else_:
+                return self.else_.validate(value, allow_coerce)
+            raise
+        else:
+            return self.then.validate(value, allow_coerce)
 
 
 class Enumeration(typing.Protocol[_T_co]):

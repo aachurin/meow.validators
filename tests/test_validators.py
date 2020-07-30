@@ -240,6 +240,9 @@ def test_union():
     assert V[typing.Union[str, int]] == Union(String(), Integer())
     assert V[typing.Union[str, int]].validate("asd") == "asd"
     assert V[typing.Union[str, int]].validate(123) == 123
+    assert Union(String(), Union(Float(), Integer())) == Union(
+        String(), Float(), Integer()
+    )
     with pytest.raises(ValidationError) as e:
         V[typing.Union[str, int]].validate(123.3)
     assert e.value.as_dict() == {"Union": ["Expected String.", "Expected Integer."]}

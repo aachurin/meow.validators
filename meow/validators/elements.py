@@ -335,8 +335,14 @@ Any = _Any()
 
 class Union(Validator[typing.Any]):
     def __init__(self, *items: Validator[typing.Any]):
-        assert all(isinstance(k, Validator) for k in items)
-        self.items = items
+        union_items: typing.List[Validator[typing.Any]] = []
+        for item in items:
+            if isinstance(item, Union):
+                union_items.extend(item.items)
+            else:
+                assert isinstance(item, Validator)
+                union_items.append(item)
+        self.items: typing.Tuple[Validator[typing.Any], ...] = tuple(union_items)
 
     def validate(self, value: object, allow_coerce: bool = False) -> typing.Any:
         errors = []

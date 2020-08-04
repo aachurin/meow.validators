@@ -482,7 +482,13 @@ def test_dataclasses():
             "d": ["xxx", "x", 2],
             "e": "22",
         }
-    ) == C(a=(A(x="aaa"), B(i=1, j=1.1)), b="ccc", c=("ooo", "oooo"), d=("xxx", "x", 2), e="22")
+    ) == C(
+        a=(A(x="aaa"), B(i=1, j=1.1)),
+        b="ccc",
+        c=("ooo", "oooo"),
+        d=("xxx", "x", 2),
+        e="22",
+    )
     assert (
         reveal_type(V[C])
         == "meow.validators.elements.Validator[tests.test_validators.C*]"

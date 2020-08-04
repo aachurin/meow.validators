@@ -29,26 +29,24 @@ import collections.abc
 from dataclasses import field as _field, fields, is_dataclass, MISSING
 from .compat import get_origin, get_args
 from .elements import (
-    Any,
     Validator,
+    Optional,
+    Adapter,
+    Any,
     String,
-    Integer,
     Float,
+    Integer,
     Boolean,
     DateTime,
-    Time,
     Date,
+    Time,
     UUID,
     Enum,
-    TypedObject,
-    Mapping,
-    List,
-    Tuple,
-    TypedTuple,
-    Set,
-    FrozenSet,
-    Optional,
     Union,
+    Mapping,
+    Object,
+    List,
+    TypedList,
 )
 
 
@@ -93,17 +91,35 @@ class Container:
         datetime.time: Time,
         datetime.date: Date,
         uuid.UUID: UUID,
-        set: (lambda items=Any, **spec: Set(items, **spec)),
-        frozenset: (lambda items=Any, **spec: FrozenSet(items, **spec)),
+        set: (
+            lambda items=Any, **spec: Adapter(
+                List(items, uniqueitems=True, **spec), set
+            )
+        ),
+        frozenset: (
+            lambda items=Any, **spec: Adapter(
+                List(items, uniqueitems=True, **spec), frozenset
+            )
+        ),
         list: (lambda items=Any, **spec: List(items, **spec)),
         dict: (lambda keys=Any, values=Any, **spec: Mapping(keys, values, **spec)),
-        tuple: (lambda items=Any, **spec: Tuple(items, **spec)),
-        collections.abc.Sequence: (lambda items=Any, **spec: Tuple(items, **spec)),
-        collections.abc.MutableSequence: (
-            lambda items=Any, **spec: Tuple(items, **spec)
+        tuple: (lambda items=Any, **spec: Adapter(List(items, **spec), tuple)),
+        collections.abc.Sequence: (
+            lambda items=Any, **spec: Adapter(List(items, **spec), tuple)
         ),
-        collections.abc.Set: (lambda items=Any, **spec: FrozenSet(items, **spec)),
-        collections.abc.MutableSet: (lambda items=Any, **spec: Set(items, **spec)),
+        collections.abc.MutableSequence: (
+            lambda items=Any, **spec: Adapter(List(items, **spec), tuple)
+        ),
+        collections.abc.Set: (
+            lambda items=Any, **spec: Adapter(
+                List(items, uniqueitems=True, **spec), frozenset
+            )
+        ),
+        collections.abc.MutableSet: (
+            lambda items=Any, **spec: Adapter(
+                List(items, uniqueitems=True, **spec), set
+            )
+        ),
         collections.abc.Mapping: (
             lambda keys=Any, values=Any, **spec: Mapping(keys, values, **spec)
         ),
@@ -201,7 +217,12 @@ class Container:
                         )
                     else:
                         properties[fld.name] = self.get_validator(fld.type)
-                return TypedObject(properties, tp, required=tuple(required))
+                return Adapter(
+                    Object(properties, required=tuple(required)), lambda x: tp(**x)
+                )
+                # return TypedObject(properties, tp, required=tuple(required))
+
+            # TODO: typing.NamedTuple
 
             if self._default is not None and (resolved := self._default(tp, ())):
                 # noinspection PyUnboundLocalVariable
@@ -235,16 +256,26 @@ class Container:
 
             if origin is tuple:
                 if items is not None:
-                    if type_args and type_args[-1] is not ...:
-                        assert len(items) == len(type_args)
-                        return TypedTuple(*items, **spec)
+                    if not type_args or type_args[-1] is ...:
+                        return Adapter(List(items, **spec), tuple)
+                    else:
+                        assert (
+                            isinstance(items, (list, tuple))
+                            and len(items) == len(type_args)
+                            and not spec
+                        ), "Invalid spec for Tuple"
+                        return Adapter(TypedList(*items), tuple)
                 elif not type_args:
-                    return Tuple(Any, **spec)
+                    return Adapter(List(Any, **spec), tuple)
                 elif type_args[-1] is ...:
-                    return Tuple(self.get_validator(type_args[0]), **spec)
+                    return Adapter(
+                        List(self.get_validator(type_args[0]), **spec), tuple
+                    )
                 else:
-                    return TypedTuple(
-                        *(self.get_validator(arg) for arg in type_args), **spec
+                    assert not spec, "Invalid spec for Tuple"
+                    return Adapter(
+                        TypedList(*(self.get_validator(arg) for arg in type_args)),
+                        tuple,
                     )
 
             # handle other generics
@@ -253,8 +284,9 @@ class Container:
             if factory := self._builtins.get(origin):
                 return factory(*items, **spec)
 
-            if self._default is not None and (resolved := self._default(tp, items)):
-                return resolved(**spec)
+            if self._default is not None:
+                if resolved := self._default(tp, items):
+                    return resolved(**spec)
 
         raise TypeError("Don't know how to create validator for %r" % tp)
 

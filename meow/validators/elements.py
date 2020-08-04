@@ -35,14 +35,6 @@ _V = typing.TypeVar("_V")
 _T_co = typing.TypeVar("_T_co", covariant=True)
 
 
-class _ValidatorMixin(typing.Protocol):
-    def error(self, code: str, **context: object) -> typing.NoReturn:
-        ...  # pragma: nocover
-
-    def error_message(self, code: str, **context: object) -> str:
-        ...  # pragma: nocover
-
-
 class Validator(typing.Generic[_T]):
 
     errors: typing.Dict[str, str] = {}
@@ -53,7 +45,7 @@ class Validator(typing.Generic[_T]):
     def error_message(self, code: str, **context: object) -> str:
         return self.errors[code].format_map(context)
 
-    def validate(self, value: object, allow_coerce: bool = False) -> _T:
+    def validate(self, value: typing.Any, allow_coerce: bool = False) -> _T:
         raise NotImplementedError()
 
     def __eq__(self, other: object) -> bool:
@@ -66,11 +58,32 @@ class Optional(Validator[typing.Optional[_T]]):
         self.validator = validator
 
     def validate(
-        self, value: object, allow_coerce: bool = False
+        self, value: typing.Any, allow_coerce: bool = False
     ) -> typing.Optional[_T]:
         if value is None:
             return None
         return self.validator.validate(value, allow_coerce)
+
+
+class Adapter(Validator[_T], typing.Generic[_V, _T]):
+    def __init__(
+        self, validator: Validator[_V], converter: typing.Callable[[_V], _T],
+    ):
+        assert isinstance(validator, Validator)
+        assert callable(converter)
+        self.validator = validator
+        self.converter = converter
+
+    def validate(self, value: typing.Any, allow_coerce: bool = False) -> _T:
+        return self.converter(self.validator.validate(value))
+
+
+class _Any(Validator[typing.Any]):
+    def validate(self, value: typing.Any, allow_coerce: bool = False) -> typing.Any:
+        return value
+
+
+Any = _Any()
 
 
 class String(Validator[str]):
@@ -83,20 +96,20 @@ class String(Validator[str]):
 
     def __init__(
         self,
-        minlength: typing.Optional[object] = None,
-        maxlength: typing.Optional[object] = None,
-        pattern: typing.Optional[object] = None,
+        minlength: typing.Optional[int] = None,
+        maxlength: typing.Optional[int] = None,
+        pattern: typing.Optional[str] = None,
     ):
 
         assert maxlength is None or isinstance(maxlength, int)
         assert minlength is None or isinstance(minlength, int)
         assert pattern is None or isinstance(pattern, str)
 
-        self.maxlength: typing.Optional[int] = maxlength
-        self.minlength: typing.Optional[int] = minlength
-        self.pattern: typing.Optional[str] = pattern
+        self.maxlength = maxlength
+        self.minlength = minlength
+        self.pattern = pattern
 
-    def validate(self, value: object, allow_coerce: bool = False) -> str:
+    def validate(self, value: typing.Any, allow_coerce: bool = False) -> str:
         if not isinstance(value, str):
             self.error("type")
 
@@ -112,15 +125,21 @@ class String(Validator[str]):
         return value
 
 
-class NumericType(Validator[_T]):
-    numeric_type: typing.ClassVar[typing.Type[_T]]
+class Float(Validator[float]):
+    errors = {
+        "type": "Expected Float.",
+        "min": "Float {value} is less then minimum value of {min}.",
+        "equal_min": "Float {value} equals minimum value of {min}.",
+        "max": "Float {value} exceeds maximum value of {max}.",
+        "equal_max": "Float {value} equals maximum value of {max}.",
+    }
 
     def __init__(
         self,
-        lt: typing.Optional[_T] = None,
-        gt: typing.Optional[_T] = None,
-        lte: typing.Optional[_T] = None,
-        gte: typing.Optional[_T] = None,
+        lt: typing.Optional[float] = None,
+        gt: typing.Optional[float] = None,
+        lte: typing.Optional[float] = None,
+        gte: typing.Optional[float] = None,
     ):
 
         assert lt is None or isinstance(lt, (int, float))
@@ -133,58 +152,41 @@ class NumericType(Validator[_T]):
         self.lte = lte
         self.gte = gte
 
-    def validate(self, value: object, allow_coerce: bool = False) -> _T:
+    def validate(self, value: typing.Any, allow_coerce: bool = False) -> float:
         if (
-            self.numeric_type is int
-            and isinstance(value, float)
-            and not value.is_integer()
-        ):
-            self.error("type")
-        elif not allow_coerce and (
-            not isinstance(value, (int, float))
+            value is None
             or isinstance(value, bool)
-            or value is None
+            or (not allow_coerce and not isinstance(value, (int, float)))
         ):
             self.error("type")
 
         try:
-            value = self.numeric_type(value)  # type: ignore
+            result_value = float(value)
         except (TypeError, ValueError):
             self.error("type")
 
         if self.lt is not None:
-            if not (value < self.lt):
-                if value == self.lt:
-                    self.error("equal_max", value=value, max=self.lt)
-                self.error("max", value=value, max=self.lt)
+            if not (result_value < self.lt):
+                if result_value == self.lt:
+                    self.error("equal_max", value=result_value, max=self.lt)
+                self.error("max", value=result_value, max=self.lt)
         elif self.lte is not None:
-            if not (value <= self.lte):
-                self.error("max", value=value, max=self.lte)
+            if not (result_value <= self.lte):
+                self.error("max", value=result_value, max=self.lte)
 
         if self.gt is not None:
-            if not (value > self.gt):
-                if value == self.gt:
-                    self.error("equal_min", value=value, min=self.gt)
-                self.error("min", value=value, min=self.gt)
+            if not (result_value > self.gt):
+                if result_value == self.gt:
+                    self.error("equal_min", value=result_value, min=self.gt)
+                self.error("min", value=result_value, min=self.gt)
         elif self.gte is not None:
-            if not (value >= self.gte):
-                self.error("min", value=value, min=self.gte)
+            if not (result_value >= self.gte):
+                self.error("min", value=result_value, min=self.gte)
 
-        return value
-
-
-class Float(NumericType[float]):
-    errors = {
-        "type": "Expected Float.",
-        "min": "Float {value} is less then minimum value of {min}.",
-        "equal_min": "Float {value} equals minimum value of {min}.",
-        "max": "Float {value} exceeds maximum value of {max}.",
-        "equal_max": "Float {value} equals maximum value of {max}.",
-    }
-    numeric_type = float
+        return result_value
 
 
-class Integer(NumericType[int]):
+class Integer(Validator[int]):
     errors = {
         "type": "Expected Integer.",
         "min": "Integer {value} is less then minimum value of {min}.",
@@ -192,13 +194,64 @@ class Integer(NumericType[int]):
         "max": "Integer {value} exceeds maximum value of {max}.",
         "equal_max": "Integer {value} equals maximum value of {max}.",
     }
-    numeric_type = int
+
+    def __init__(
+        self,
+        lt: typing.Optional[int] = None,
+        gt: typing.Optional[int] = None,
+        lte: typing.Optional[int] = None,
+        gte: typing.Optional[int] = None,
+    ):
+
+        assert lt is None or isinstance(lt, int)
+        assert gt is None or isinstance(gt, int)
+        assert lte is None or isinstance(lte, int)
+        assert gte is None or isinstance(gte, int)
+
+        self.lt = lt
+        self.gt = gt
+        self.lte = lte
+        self.gte = gte
+
+    def validate(self, value: typing.Any, allow_coerce: bool = False) -> int:
+        if (
+            value is None
+            or isinstance(value, bool)
+            or (isinstance(value, float) and not value.is_integer())
+            or (not allow_coerce and not isinstance(value, (int, float)))
+        ):
+            self.error("type")
+
+        try:
+            result_value = int(value)
+        except (TypeError, ValueError):
+            self.error("type")
+
+        if self.lt is not None:
+            if not (result_value < self.lt):
+                if result_value == self.lt:
+                    self.error("equal_max", value=result_value, max=self.lt)
+                self.error("max", value=result_value, max=self.lt)
+        elif self.lte is not None:
+            if not (result_value <= self.lte):
+                self.error("max", value=result_value, max=self.lte)
+
+        if self.gt is not None:
+            if not (result_value > self.gt):
+                if result_value == self.gt:
+                    self.error("equal_min", value=result_value, min=self.gt)
+                self.error("min", value=result_value, min=self.gt)
+        elif self.gte is not None:
+            if not (result_value >= self.gte):
+                self.error("min", value=result_value, min=self.gte)
+
+        return result_value
 
 
 class Boolean(Validator[bool]):
     errors = {"type": "Expected Boolean."}
 
-    values = {
+    values: typing.Dict[str, bool] = {
         "on": True,
         "off": False,
         "true": True,
@@ -207,23 +260,23 @@ class Boolean(Validator[bool]):
         "0": False,
     }
 
-    def validate(self, value: object, allow_coerce: bool = False) -> bool:
-        if not isinstance(value, bool):
-            if allow_coerce and isinstance(value, str):
-                try:
-                    value = self.values[value.lower()]
-                except KeyError:
-                    self.error("type")
-            else:
+    def validate(self, value: typing.Any, allow_coerce: bool = False) -> bool:
+        if isinstance(value, bool):
+            return value
+        if allow_coerce and isinstance(value, str):
+            try:
+                return self.values[value.lower()]
+            except KeyError:
                 self.error("type")
-        return value
+
+        self.error("type")
 
 
-class DateTimeType(Validator[_T]):
+class _DateTimeType(Validator[_T]):
     datetime_pattern: typing.ClassVar[typing.Pattern[str]]
     datetime_type: typing.ClassVar[typing.Type[_T]]
 
-    def validate(self, value: object, allow_coerce: bool = False) -> _T:
+    def validate(self, value: typing.Any, allow_coerce: bool = False) -> _T:
         if not isinstance(value, str):
             self.error("type")
 
@@ -260,14 +313,14 @@ class DateTimeType(Validator[_T]):
             kwargs["tzinfo"] = tzinfo
 
         try:
-            value = self.datetime_type(**kwargs)  # type: ignore
+            result_value = self.datetime_type(**kwargs)  # type: ignore
         except ValueError:
             self.error("type")
 
-        return value
+        return result_value
 
 
-class DateTime(DateTimeType[datetime.datetime]):
+class DateTime(_DateTimeType[datetime.datetime]):
     errors = {"type": "Expected DateTime."}
     datetime_pattern = re.compile(
         r"(?P<year>\d{4})-(?P<month>\d{1,2})-(?P<day>\d{1,2})"
@@ -278,7 +331,15 @@ class DateTime(DateTimeType[datetime.datetime]):
     datetime_type = datetime.datetime
 
 
-class Time(DateTimeType[datetime.time]):
+class Date(_DateTimeType[datetime.date]):
+    errors = {"type": "Expected Date."}
+    datetime_pattern = re.compile(
+        r"(?P<year>\d{4})-(?P<month>\d{1,2})-(?P<day>\d{1,2})$"
+    )
+    datetime_type = datetime.date
+
+
+class Time(_DateTimeType[datetime.time]):
     errors = {"type": "Expected Time."}
     datetime_pattern = re.compile(
         r"(?P<hour>\d{1,2}):(?P<minute>\d{1,2})"
@@ -287,18 +348,10 @@ class Time(DateTimeType[datetime.time]):
     datetime_type = datetime.time
 
 
-class Date(DateTimeType[datetime.date]):
-    errors = {"type": "Expected Date."}
-    datetime_pattern = re.compile(
-        r"(?P<year>\d{4})-(?P<month>\d{1,2})-(?P<day>\d{1,2})$"
-    )
-    datetime_type = datetime.date
-
-
 class UUID(Validator[uuid.UUID]):
     errors = {"type": "Expected UUID."}
 
-    def validate(self, value: object, allow_coerce: bool = False) -> uuid.UUID:
+    def validate(self, value: typing.Any, allow_coerce: bool = False) -> uuid.UUID:
         if not isinstance(value, str):
             self.error("type")
 
@@ -308,16 +361,16 @@ class UUID(Validator[uuid.UUID]):
             self.error("type")
 
 
-class Const(Validator[typing.Any]):
+class Const(Validator[_T]):
     errors = {
         "only_null": "Value does not match null.",
         "const": "Value does not match {const!r}.",
     }
 
-    def __init__(self, const: typing.Any):
+    def __init__(self, const: _T):
         self.const = const
 
-    def validate(self, value: object, allow_coerce: bool = False) -> typing.Any:
+    def validate(self, value: typing.Any, allow_coerce: bool = False) -> _T:
         if value != self.const:
             if self.const is None:
                 self.error("only_null")
@@ -325,12 +378,45 @@ class Const(Validator[typing.Any]):
         return self.const
 
 
-class _Any(Validator[typing.Any]):
-    def validate(self, value: object, allow_coerce: bool = False) -> typing.Any:
-        return value
+class _Enumeration(typing.Protocol[_T_co]):
+    def __getitem__(self, key: typing.Any) -> _T_co:
+        ...  # pragma: nocover
+
+    def __iter__(self) -> typing.Iterator[_T_co]:
+        ...  # pragma: nocover
 
 
-Any = _Any()
+class Enum(Validator[_T]):
+    errors = {
+        "choice": "Value {value!r} does not match any of the available choices: {choices}."
+    }
+
+    def __init__(self, items: _Enumeration[_T]):
+        self.items = items
+
+    def validate(self, value: typing.Any, allow_coerce: bool = False) -> _T:
+        try:
+            return self.items[value]
+        except (KeyError, ValueError, TypeError):
+            # special case for python Enum
+            enum = [str(getattr(x, "name", x)) for x in self.items]
+            self.error("choice", value=value, choices=", ".join(enum))
+
+
+class Choice(Validator[_T]):
+    errors = {
+        "choice": "Value {value!r} does not match any of the available choices: {choices}."
+    }
+
+    def __init__(self, items: typing.Collection[_T]):
+        self.items = items
+
+    def validate(self, value: typing.Any, allow_coerce: bool = False) -> _T:
+        if value not in self.items:
+            self.error(
+                "choice", value=value, choices=", ".join(repr(x) for x in self.items)
+            )
+        return value  # type: ignore
 
 
 class Union(Validator[typing.Any]):
@@ -344,7 +430,7 @@ class Union(Validator[typing.Any]):
                 union_items.append(item)
         self.items: typing.Tuple[Validator[typing.Any], ...] = tuple(union_items)
 
-    def validate(self, value: object, allow_coerce: bool = False) -> typing.Any:
+    def validate(self, value: typing.Any, allow_coerce: bool = False) -> typing.Any:
         errors = []
         for item in self.items:
             try:
@@ -367,7 +453,7 @@ class If(Validator[typing.Any]):
         self.then = then
         self.else_ = else_
 
-    def validate(self, value: object, allow_coerce: bool = False) -> typing.Any:
+    def validate(self, value: typing.Any, allow_coerce: bool = False) -> typing.Any:
         try:
             self.cond.validate(value, allow_coerce)
         except ValidationError:
@@ -378,98 +464,13 @@ class If(Validator[typing.Any]):
             return self.then.validate(value, allow_coerce)
 
 
-class Enumeration(typing.Protocol[_T_co]):
-    def __getitem__(self, key: typing.Any) -> _T_co:
-        ...  # pragma: nocover
-
-    def __iter__(self) -> typing.Iterator[_T_co]:
-        ...  # pragma: nocover
-
-
-class Enum(Validator[_T]):
-    errors = {
-        "choice": "Value {value!r} does not match any of the available choices: {choices}."
-    }
-
-    def __init__(self, items: Enumeration[_T]):
-        self.items = items
-
-    def validate(self, value: object, allow_coerce: bool = False) -> _T:
-        try:
-            return self.items[value]
-        except (KeyError, ValueError, TypeError):
-            enum = [str(getattr(x, "name", x)) for x in self.items]
-            self.error("choice", value=value, choices=", ".join(enum))
-
-
-class Choice(Validator[_T]):
-    errors = {
-        "choice": "Value {value!r} does not match any of the available choices: {choices}."
-    }
-
-    def __init__(self, items: typing.Collection[_T]):
-        self.items = items
-
-    def validate(self, value: object, allow_coerce: bool = False) -> _T:
-        if value not in self.items:
-            self.error(
-                "choice", value=value, choices=", ".join(repr(x) for x in self.items)
-            )
-        return value  # type: ignore
-
-
-class _MappingMixin(typing.Generic[_K, _V]):
+class Mapping(Validator[typing.Dict[_K, _V]]):
     errors = {
         "type": "Expected Object.",
         "minitems": "Object property count {count} is less then minimum count of {minitems}.",
         "maxitems": "Object property count {count} exceeds maximum count of {maxitems}.",
     }
 
-    def _validate(
-        self: _ValidatorMixin,
-        value: object,
-        keys: typing.Optional[Validator[_K]],
-        values: typing.Optional[Validator[_V]],
-        minitems: typing.Optional[int] = None,
-        maxitems: typing.Optional[int] = None,
-        allow_coerce: bool = False,
-    ) -> typing.Mapping[_K, _V]:
-        if not isinstance(value, typing.Mapping):
-            self.error("type")
-
-        if minitems is not None and len(value) < minitems:
-            self.error("minitems", count=len(value), minitems=minitems)
-
-        elif maxitems is not None and len(value) > maxitems:
-            self.error("maxitems", count=len(value), maxitems=maxitems)
-
-        validated: typing.Dict[_K, _V] = {}
-
-        errors = {}
-
-        for key, val in value.items():
-            pos = key
-            if keys is not None:
-                try:
-                    key = keys.validate(key)
-                except ValidationError as exc:
-                    errors[pos] = exc.detail
-                    continue
-            if values is not None:
-                try:
-                    val = values.validate(val, allow_coerce)
-                except ValidationError as exc:
-                    errors[pos] = exc.detail
-                    continue
-            validated[key] = val
-
-        if errors:
-            raise ValidationError(errors)
-
-        return validated
-
-
-class Mapping(_MappingMixin[_K, _V], Validator[typing.Mapping[_K, _V]]):
     def __init__(
         self,
         keys: Validator[_K],
@@ -487,85 +488,36 @@ class Mapping(_MappingMixin[_K, _V], Validator[typing.Mapping[_K, _V]]):
         self.maxitems = maxitems
 
     def validate(
-        self, value: object, allow_coerce: bool = False
-    ) -> typing.Mapping[_K, _V]:
-        return self._validate(
-            value, self.keys, self.values, self.minitems, self.maxitems, allow_coerce
-        )
-
-
-class TypedMapping(_MappingMixin[_K, _V], Validator[_T]):
-    def __init__(
-        self,
-        keys: Validator[_K],
-        values: Validator[_V],
-        converter: typing.Type[_T],
-        minitems: typing.Optional[int] = None,
-        maxitems: typing.Optional[int] = None,
-    ):
-        assert isinstance(keys, Validator)
-        assert isinstance(values, Validator)
-        assert minitems is None or isinstance(minitems, int)
-        assert maxitems is None or isinstance(maxitems, int)
-        assert callable(converter)
-
-        self.keys = None if keys is Any else keys
-        self.values = None if values is Any else values
-        self.minitems = minitems
-        self.maxitems = maxitems
-        self.converter = converter
-
-    def validate(self, value: object, allow_coerce: bool = False) -> _T:
-        return self.converter(  # type: ignore
-            self._validate(
-                value,
-                self.keys,
-                self.values,
-                self.minitems,
-                self.maxitems,
-                allow_coerce,
-            )
-        )
-
-
-class _ObjectMixin:
-    errors = {
-        "type": "Expected Object.",
-        "invalid_key": "Object keys must be strings.",
-        "required": "Required property is missing.",
-    }
-
-    def _validate(
-        self: _ValidatorMixin,
-        value: object,
-        properties: typing.Mapping[str, Validator[typing.Any]],
-        required: typing.Optional[typing.Tuple[str, ...]],
-        allow_coerce: bool = False,
-    ) -> typing.Mapping[str, typing.Any]:
+        self, value: typing.Any, allow_coerce: bool = False
+    ) -> typing.Dict[_K, _V]:
         if not isinstance(value, typing.Mapping):
             self.error("type")
 
-        validated: typing.Dict[str, typing.Any] = {}
-        errors: typing.Dict[str, typing.Any] = {}
+        if self.minitems is not None and len(value) < self.minitems:
+            self.error("minitems", count=len(value), minitems=self.minitems)
 
-        for key in value.keys():
-            if not isinstance(key, str):
-                errors[key] = self.error_message("invalid_key")
+        elif self.maxitems is not None and len(value) > self.maxitems:
+            self.error("maxitems", count=len(value), maxitems=self.maxitems)
 
-        # Required properties
-        if required:
-            for key in required:
-                if key not in value:
-                    errors[key] = self.error_message("required")
+        validated: typing.Dict[_K, _V] = {}
 
-        for key, child_schema in properties.items():
-            if key not in value:
-                continue
-            item = value[key]
-            try:
-                validated[key] = child_schema.validate(item, allow_coerce)
-            except ValidationError as exc:
-                errors[key] = exc.detail
+        errors = {}
+
+        for key, val in value.items():
+            pos = key
+            if self.keys is not None:
+                try:
+                    key = self.keys.validate(key)
+                except ValidationError as exc:
+                    errors[pos] = exc.detail
+                    continue
+            if self.values is not None:
+                try:
+                    val = self.values.validate(val, allow_coerce)
+                except ValidationError as exc:
+                    errors[pos] = exc.detail
+                    continue
+            validated[key] = val
 
         if errors:
             raise ValidationError(errors)
@@ -573,7 +525,13 @@ class _ObjectMixin:
         return validated
 
 
-class Object(_ObjectMixin, Validator[typing.Mapping[str, typing.Any]]):
+class Object(Validator[typing.Dict[str, typing.Any]]):
+    errors = {
+        "type": "Expected Object.",
+        "invalid_key": "Object keys must be strings.",
+        "required": "Required property is missing.",
+    }
+
     def __init__(
         self,
         properties: typing.Mapping[str, Validator[typing.Any]],
@@ -588,33 +546,41 @@ class Object(_ObjectMixin, Validator[typing.Mapping[str, typing.Any]]):
         self.required = tuple(properties.keys()) if required is None else required
 
     def validate(
-        self, value: object, allow_coerce: bool = False
-    ) -> typing.Mapping[str, typing.Any]:
-        return self._validate(value, self.properties, self.required, allow_coerce)
+        self, value: typing.Any, allow_coerce: bool = False
+    ) -> typing.Dict[str, typing.Any]:
+
+        if not isinstance(value, typing.Mapping):
+            self.error("type")
+
+        validated: typing.Dict[str, typing.Any] = {}
+        errors: typing.Dict[str, typing.Any] = {}
+
+        for key in value.keys():
+            if not isinstance(key, str):
+                errors[key] = self.error_message("invalid_key")
+
+        # Required properties
+        if self.required:
+            for key in self.required:
+                if key not in value:
+                    errors[key] = self.error_message("required")
+
+        for key, child_schema in self.properties.items():
+            if key not in value:
+                continue
+            item = value[key]
+            try:
+                validated[key] = child_schema.validate(item, allow_coerce)
+            except ValidationError as exc:
+                errors[key] = exc.detail
+
+        if errors:
+            raise ValidationError(errors)
+
+        return validated
 
 
-class TypedObject(_ObjectMixin, Validator[_T]):
-    def __init__(
-        self,
-        properties: typing.Mapping[str, Validator[typing.Any]],
-        converter: typing.Type[_T],
-        required: typing.Tuple[str, ...] = (),
-    ):
-        assert all(isinstance(k, str) for k in properties.keys())
-        assert all(isinstance(v, Validator) for v in properties.values())
-        assert isinstance(required, tuple) and all(isinstance(i, str) for i in required)
-        assert callable(converter)
-        self.properties = properties
-        self.required = required
-        self.converter = converter
-
-    def validate(self, value: object, allow_coerce: bool = False) -> _T:
-        return self.converter(  # type: ignore
-            **self._validate(value, self.properties, self.required, allow_coerce)
-        )
-
-
-class _ListMixin(typing.Generic[_T]):
+class List(Validator[typing.List[_T]]):
     errors = {
         "type": "Expected Array.",
         "minitems": "Array item count {count} is less than minimum count of {minitems}.",
@@ -622,38 +588,49 @@ class _ListMixin(typing.Generic[_T]):
         "uniqueitems": "Non-unique array item.",
     }
 
-    def _validate(
-        self: _ValidatorMixin,
-        value: object,
-        items: typing.Optional[Validator[_T]],
+    def __init__(
+        self,
+        items: Validator[_T],
         minitems: typing.Optional[int] = None,
         maxitems: typing.Optional[int] = None,
         uniqueitems: bool = False,
-        allow_coerce: bool = False,
+    ):
+        assert isinstance(items, Validator)
+        assert minitems is None or isinstance(minitems, int)
+        assert maxitems is None or isinstance(maxitems, int)
+        assert isinstance(uniqueitems, bool)
+
+        self.items = None if items is Any else items
+        self.minitems = minitems
+        self.maxitems = maxitems
+        self.uniqueitems = uniqueitems
+
+    def validate(
+        self, value: typing.Any, allow_coerce: bool = False
     ) -> typing.List[_T]:
         if not isinstance(value, list):
             self.error("type")
 
-        if minitems is not None and len(value) < minitems:
-            self.error("minitems", count=len(value), minitems=minitems)
-        elif maxitems is not None and len(value) > maxitems:
-            self.error("maxitems", count=len(value), maxitems=maxitems)
+        if self.minitems is not None and len(value) < self.minitems:
+            self.error("minitems", count=len(value), minitems=self.minitems)
+        elif self.maxitems is not None and len(value) > self.maxitems:
+            self.error("maxitems", count=len(value), maxitems=self.maxitems)
 
         errors = {}
         validated = []
 
-        if uniqueitems:
-            seen_items = Uniqueness()
+        if self.uniqueitems:
+            seen_items = _Uniqueness()
 
         for pos, item in enumerate(value):
-            if items is not None:
+            if self.items is not None:
                 try:
-                    item = items.validate(item, allow_coerce)
+                    item = self.items.validate(item, allow_coerce)
                 except ValidationError as exc:
                     errors[pos] = exc.detail
                     continue
 
-            if uniqueitems:
+            if self.uniqueitems:
                 # noinspection PyUnboundLocalVariable
                 if item in seen_items:
                     errors[pos] = self.error_message("uniqueitems")
@@ -669,123 +646,20 @@ class _ListMixin(typing.Generic[_T]):
         return validated
 
 
-class List(_ListMixin[_V], Validator[typing.List[_V]]):
-    def __init__(
-        self,
-        items: Validator[_V],
-        minitems: typing.Optional[int] = None,
-        maxitems: typing.Optional[int] = None,
-        uniqueitems: bool = False,
-    ):
-        assert isinstance(items, Validator)
-        assert minitems is None or isinstance(minitems, int)
-        assert maxitems is None or isinstance(maxitems, int)
-        assert isinstance(uniqueitems, bool)
-
-        self.items = None if items is Any else items
-        self.minitems = minitems
-        self.maxitems = maxitems
-        self.uniqueitems = uniqueitems
-
-    def validate(self, value: object, allow_coerce: bool = False) -> typing.List[_V]:
-        return self._validate(
-            value,
-            items=self.items,
-            minitems=self.minitems,
-            maxitems=self.maxitems,
-            uniqueitems=self.uniqueitems,
-            allow_coerce=allow_coerce,
-        )
-
-
-_T_Col = typing.TypeVar("_T_Col", bound=typing.Collection)  # type: ignore
-
-
-class TypedList(_ListMixin[_V], Validator[_T]):
-    def __init__(
-        self,
-        items: Validator[_V],
-        converter: typing.Type[_T],
-        minitems: typing.Optional[int] = None,
-        maxitems: typing.Optional[int] = None,
-        uniqueitems: bool = False,
-    ):
-        assert isinstance(items, Validator)
-        assert minitems is None or isinstance(minitems, int)
-        assert maxitems is None or isinstance(maxitems, int)
-        assert callable(converter)
-
-        self.items = None if items is Any else items
-        self.minitems = minitems
-        self.maxitems = maxitems
-        self.uniqueitems = uniqueitems
-        self.converter = converter
-
-    def validate(self, value: object, allow_coerce: bool = False) -> _T:
-        return self.converter(  # type: ignore
-            self._validate(
-                value,
-                items=self.items,
-                minitems=self.minitems,
-                maxitems=self.maxitems,
-                uniqueitems=self.uniqueitems,
-                allow_coerce=allow_coerce,
-            )
-        )
-
-
-class Tuple(TypedList[_V, typing.Tuple[_V, ...]]):
-    def __init__(
-        self,
-        items: Validator[_V],
-        minitems: typing.Optional[int] = None,
-        maxitems: typing.Optional[int] = None,
-        uniqueitems: bool = False,
-    ):
-        super().__init__(items, tuple, minitems, maxitems, uniqueitems)
-
-
-class Set(TypedList[_V, typing.Set[_V]]):
-    def __init__(
-        self,
-        items: Validator[_V],
-        minitems: typing.Optional[int] = None,
-        maxitems: typing.Optional[int] = None,
-    ):
-        super().__init__(items, set, minitems, maxitems, True)
-
-
-class FrozenSet(TypedList[_V, typing.FrozenSet[_V]]):
-    def __init__(
-        self,
-        items: Validator[_V],
-        minitems: typing.Optional[int] = None,
-        maxitems: typing.Optional[int] = None,
-    ):
-        super().__init__(items, frozenset, minitems, maxitems, True)
-
-
-_T_Tup = typing.TypeVar("_T_Tup", bound=typing.Tuple)  # type: ignore
-
-
-class TypedTuple(Validator[_T_Tup]):
+class TypedList(Validator[typing.Any]):
     errors = {
         "type": "Expected Array.",
         "minitems": "Array item count {count} is less than minimum count of {minitems}.",
         "maxitems": "Array item count {count} exceeds maximum count of {maxitems}.",
     }
 
-    def __init__(
-        self,
-        *items: Validator[typing.Any],
-        converter: typing.Optional[typing.Type[tuple]] = None,  # type: ignore
-    ):
+    def __init__(self, *items: Validator[typing.Any]):
         assert all(isinstance(item, Validator) for item in items)
-        assert converter is None or callable(converter)
         self.items = items
-        self.converter = converter or tuple
 
-    def validate(self, value: object, allow_coerce: bool = False) -> _T_Tup:
+    def validate(
+        self, value: typing.Any, allow_coerce: bool = False
+    ) -> typing.List[typing.Any]:
         if not isinstance(value, list):
             self.error("type")
 
@@ -807,11 +681,10 @@ class TypedTuple(Validator[_T_Tup]):
         if errors:
             raise ValidationError(errors)
 
-        # noinspection PyArgumentList
-        return self.converter(validated)  # type: ignore
+        return validated
 
 
-class Uniqueness:
+class _Uniqueness:
     """
     A set-like class that tests for uniqueness of primitive types.
     Ensures the `True` and `False` are treated as distinct from `1` and `0`,
@@ -823,17 +696,17 @@ class Uniqueness:
     FALSE = object()
 
     def __init__(self) -> None:
-        self._set: typing.Set[object] = set()
+        self._set: typing.Set[typing.Any] = set()
 
-    def __contains__(self, item: object) -> bool:
+    def __contains__(self, item: typing.Any) -> bool:
         item = self.make_hashable(item)
         return item in self._set
 
-    def add(self, item: object) -> None:
+    def add(self, item: typing.Any) -> None:
         item = self.make_hashable(item)
         self._set.add(item)
 
-    def make_hashable(self, element: object) -> object:
+    def make_hashable(self, element: typing.Any) -> typing.Any:
         """
         Coerce a primitive into a uniquely hashable type, for uniqueness checks.
         """

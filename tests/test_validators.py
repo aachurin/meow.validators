@@ -89,6 +89,8 @@ def test_float():
     with pytest.raises(ValidationError):
         V[float].validate("123.4")
     with pytest.raises(ValidationError):
+        V[float].validate("123a", allow_coerce=True)
+    with pytest.raises(ValidationError):
         V[float].validate(True)
     with pytest.raises(ValidationError):
         V[float].validate(None)
@@ -105,9 +107,13 @@ def test_float():
     assert validator.validate(2.00001) == 2.00001
     assert validator.validate(9.99999) == 9.99999
     with pytest.raises(ValidationError):
+        validator.validate(1)
+    with pytest.raises(ValidationError):
         validator.validate(2)
     with pytest.raises(ValidationError):
         validator.validate(10)
+    with pytest.raises(ValidationError):
+        validator.validate(11)
 
 
 def test_bool():
@@ -305,17 +311,12 @@ def test_mapping():
         validator.validate({1: 10})
     assert validator.validate({"a": 1}) == {"a": 1}
 
-    assert isinstance(
-        TypedMapping(String(), String(), converter=OrderedDict).validate({"a": "b"}),
-        OrderedDict,
-    )
-
 
 def test_object():
     validator = Object({"a": Integer(), "b": String()})
     assert (
         reveal_type(validator.validate({"a": 10, "b": "asd"}))
-        == "typing.Mapping[builtins.str, Any]"
+        == "builtins.dict[builtins.str, Any]"
     )
 
 
@@ -361,24 +362,18 @@ def test_list():
 
 
 def test_tuple():
-    assert V[tuple] == Tuple(Any)
     assert (
         reveal_type(V[tuple])
         == "meow.validators.elements.Validator[builtins.tuple*[Any]]"
     )
-    assert V[typing.Tuple] == Tuple(Any)
-    assert (
-        reveal_type(V[tuple])
-        == "meow.validators.elements.Validator[builtins.tuple*[Any]]"
-    )
-    assert V[typing.Tuple[int, ...]] == Tuple(Integer())
-    assert reveal_type(V[typing.Tuple[int, ...]])  # broken in mypy 0.780
 
-    assert V[typing.Tuple[int]] == TypedTuple(Integer())
-    assert V[typing.Tuple[int, int]] == TypedTuple(Integer(), Integer())
-    assert V[typing.Tuple[int, str]] == TypedTuple(Integer(), String())
-
+    assert V[typing.Tuple].validate(["a", 1]) == ("a", 1)
+    assert V[typing.Tuple[int]].validate([1]) == (1,)
+    assert V[typing.Tuple[int, ...]].validate([1, 1]) == (1, 1)
     assert V[typing.Tuple[int, str]].validate([1, "s"]) == (1, "s")
+
+    with pytest.raises(ValidationError):
+        V[typing.Tuple[int]].validate([1, 2])
 
     with pytest.raises(ValidationError):
         V[typing.Tuple[int, str]].validate("asdads")
@@ -394,16 +389,6 @@ def test_tuple():
 
 
 def test_sets():
-    assert V[set] == Set(Any)
-    assert V[frozenset] == FrozenSet(Any)
-    assert V[typing.AbstractSet] == FrozenSet(Any)
-    assert V[typing.Set] == Set(Any)
-    assert V[typing.MutableSet] == Set(Any)
-    assert V[typing.FrozenSet] == FrozenSet(Any)
-    assert V[typing.Set[str]] == Set(V[str])
-    assert V[typing.MutableSet[str]] == Set(V[str])
-    assert V[typing.FrozenSet[str]] == FrozenSet(V[str])
-
     assert (
         reveal_type(V[set]) == "meow.validators.elements.Validator[builtins.set*[Any]]"
     )
@@ -429,7 +414,7 @@ def test_sets():
 
 
 def test_sequences():
-    assert V[typing.Sequence[str]] == Tuple(V[str])
+    # assert V[typing.Sequence[str]] == Tuple(V[str])
     assert (
         reveal_type(V[typing.Sequence[str]])
         == "meow.validators.elements.Validator[def () -> typing.Sequence[builtins.str*]]"
@@ -479,41 +464,25 @@ class B:
 class C:
     a: typing.Tuple[A, B]
     b: str = field(minlength=2)
+    c: typing.Tuple[str, ...] = field(items=String())
     d: typing.Tuple[str, str, int] = field(
         items=(String(), String(minlength=1), Integer(lte=3))
     )
     e: typing.Union[int, str] = field(items=(Integer(), String(minlength=1)))
-    c: typing.Optional[typing.Mapping[str, str]] = field(minitems=2, default=None)
+    f: typing.Optional[typing.Mapping[str, str]] = field(minitems=2, default=None)
 
 
 def test_dataclasses():
     assert V[C] is V[C]
-    assert V[C] == TypedObject(
-        {
-            "a": TypedTuple(
-                TypedObject(
-                    {"x": String(), "y": String()}, converter=A, required=("x",)
-                ),
-                TypedObject(
-                    {"i": Integer(), "j": Float()}, converter=B, required=("i", "j"),
-                ),
-            ),
-            "b": String(minlength=2),
-            "c": Optional(Mapping(String(), String(), minitems=2)),
-            "d": TypedTuple(String(), String(minlength=1), Integer(lte=3)),
-            "e": Union(Integer(), String(minlength=1)),
-        },
-        converter=C,
-        required=("a", "b", "d", "e"),
-    )
     assert V[C].validate(
         {
             "a": [{"x": "aaa"}, {"i": 1, "j": 1.1}],
             "b": "ccc",
+            "c": ["ooo", "oooo"],
             "d": ["xxx", "x", 2],
             "e": "22",
         }
-    ) == C(a=(A(x="aaa"), B(i=1, j=1.1)), b="ccc", d=("xxx", "x", 2), e="22")
+    ) == C(a=(A(x="aaa"), B(i=1, j=1.1)), b="ccc", c=("ooo", "oooo"), d=("xxx", "x", 2), e="22")
     assert (
         reveal_type(V[C])
         == "meow.validators.elements.Validator[tests.test_validators.C*]"
@@ -533,6 +502,7 @@ def test_dataclasses():
     except ValidationError as e:
         assert e.as_dict() == {
             "a": "Array item count 0 is less than minimum count of 2.",
+            "c": "Required property is missing.",
             "d": "Required property is missing.",
         }
 
@@ -558,7 +528,7 @@ def resolve_default(obj, v_args):
         return lambda **spec: Integer(gte=1, lte=2, **spec)
     origin = typing.get_origin(obj)
     if origin is MyGenericType and len(v_args) == 1:
-        return lambda **spec: TypedList(v_args[0], converter=MyGenericType, **spec)
+        return lambda **spec: Adapter(List(v_args[0], **spec), MyGenericType)
 
 
 def test_default():
@@ -583,6 +553,8 @@ def test_default():
 
 
 def test_const():
+    assert reveal_type(Const(1)) == "meow.validators.elements.Const[builtins.int*]"
+    assert reveal_type(Const(1).validate(1)) == "builtins.int*"
     assert Const(1).validate(1) == 1
     with pytest.raises(ValidationError):
         Const(1).validate("1")
@@ -597,3 +569,11 @@ def test_choice():
 
     with pytest.raises(ValidationError):
         Choice(choices).validate("C")
+
+
+def test_adapter():
+    assert (
+        reveal_type(Adapter(String(), lambda x: x))
+        == "meow.validators.elements.Adapter[builtins.str, builtins.str*]"
+    )
+    assert reveal_type(Adapter(String(), lambda x: x).validate("s")) == "builtins.str*"

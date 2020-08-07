@@ -256,7 +256,7 @@ def test_union():
     )
     with pytest.raises(ValidationError) as e:
         V[typing.Union[str, int]].validate(123.3)
-    assert e.value.as_dict() == {"_union": ["Must be a string.", "Must be an integer."]}
+    assert e.value.as_dict() == {"": "Must be an integer."}
 
 
 def test_if():
@@ -346,6 +346,11 @@ def test_object():
         reveal_type(validator.validate({"a": 10, "b": "asd"}))
         == "builtins.dict[builtins.str, Any]"
     )
+    assert validator.validate({"a": 1, "b": "x", "c": True}) == {"a": 1, "b": "x"}
+    validator = Object({"a": Integer(), "b": String()}, deny_additional=True)
+    with pytest.raises(ValidationError) as e:
+        validator.validate({"a": 1, "b": "x", "c": True})
+    assert e.value.as_dict() == {"c": "Invalid property name."}
 
 
 def test_list():
@@ -622,3 +627,31 @@ def test_chain():
         reveal_type(Chain(String(), Integer()).validate("1", allow_coerce=True))
         == "builtins.int*"
     )
+
+
+def test_error():
+    assert reveal_type(Error("test")) == "meow.validators.elements.Error"
+    with pytest.raises(ValidationError) as e:
+        Error("test").validate("")
+    assert e.value.as_dict() == {"": "test"}
+
+
+def test_switch():
+    validator = Switch((String(), String(minlength=1)), (Integer(), Integer(gte=10)),)
+    with pytest.raises(ValidationError) as e:
+        validator.validate("")
+    assert e.value.as_dict() == {"": "Must have at least 1 characters."}
+    with pytest.raises(ValidationError) as e:
+        validator.validate(0)
+    assert e.value.as_dict() == {"": "Must be greater than or equal to 10."}
+    with pytest.raises(ValidationError) as e:
+        validator.validate(1.1)
+    assert e.value.as_dict() == {"": "Must be an integer."}
+    assert validator.validate("a") == "a"
+    assert validator.validate(10) == 10
+    validator = Switch(
+        (String(), String(minlength=1)), (Integer(), Integer(gte=10)), default=Boolean()
+    )
+    with pytest.raises(ValidationError) as e:
+        validator.validate(0)
+    assert validator.validate(True) == True

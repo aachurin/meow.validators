@@ -385,6 +385,16 @@ class Const(Validator[_T]):
         return self.const
 
 
+class Error(Validator[typing.Any]):
+    def __init__(self, message: str):
+        self.message = message
+
+    def validate(
+        self, value: typing.Any, allow_coerce: bool = False
+    ) -> typing.NoReturn:
+        raise ValidationError(self.message)
+
+
 class _Enumeration(typing.Protocol[_T_co]):
     def __getitem__(self, key: typing.Any) -> _T_co:
         ...  # pragma: nocover
@@ -432,15 +442,14 @@ class Union(Validator[typing.Any]):
         self.items: typing.Tuple[Validator[typing.Any], ...] = tuple(union_items)
 
     def validate(self, value: typing.Any, allow_coerce: bool = False) -> typing.Any:
-        errors = []
+        error = None
         for item in self.items:
             try:
                 return item.validate(value, allow_coerce)
             except ValidationError as exc:
-                if exc.detail not in errors:
-                    errors.append(exc.detail)
+                error = exc.detail
                 continue
-        raise ValidationError({"_union": errors})
+        raise ValidationError(error)
 
 
 class If(Validator[typing.Any]):
@@ -463,6 +472,34 @@ class If(Validator[typing.Any]):
             raise
         else:
             return self.then.validate(value, allow_coerce)
+
+
+class Switch(Validator[typing.Any]):
+    def __init__(
+        self,
+        *cases: typing.Tuple[Validator[typing.Any], Validator[typing.Any]],
+        default: typing.Optional[Validator[typing.Any]] = None,
+    ):
+        assert len(cases) > 0
+        assert all(
+            isinstance(x, Validator) and isinstance(y, Validator) for x, y in cases
+        )
+        assert default is None or isinstance(default, Validator)
+        self.cases = cases
+        self.default = default
+
+    def validate(self, value: typing.Any, allow_coerce: bool = False) -> typing.Any:
+        error = None
+        for check, validator in self.cases:
+            try:
+                check.validate(value)
+            except ValidationError as exc:
+                error = exc.detail
+                continue
+            return validator.validate(value)
+        if self.default:
+            return self.default.validate(value)
+        raise ValidationError(error)
 
 
 class Mapping(Validator[typing.Dict[_K, _V]]):
@@ -535,14 +572,17 @@ class Router(Validator[typing.Dict[str, typing.Any]]):
     def __init__(
         self,
         items: typing.Dict[str, Validator[typing.Any]],
+        default: typing.Optional[Validator[typing.Any]] = None,
         minitems: typing.Optional[int] = None,
         maxitems: typing.Optional[int] = None,
     ):
         assert all(isinstance(k, str) for k in items.keys())
         assert all(isinstance(v, Validator) for v in items.values())
+        assert default is None or isinstance(default, Validator)
         assert minitems is None or isinstance(minitems, int)
         assert maxitems is None or isinstance(maxitems, int)
         self.items = items
+        self.default = default
         self.minitems = minitems
         self.maxitems = maxitems
 
@@ -562,7 +602,7 @@ class Router(Validator[typing.Dict[str, typing.Any]]):
         validated: typing.Dict[str, typing.Any] = {}
 
         for key, val in value.items():
-            item = self.items.get(key)
+            item = self.items.get(key, self.default)
             if item is None:
                 errors[key] = self.error_message(
                     "choice", choices=", ".join(self.items)
@@ -587,12 +627,14 @@ class Object(Validator[typing.Dict[str, typing.Any]]):
         "type": "Must be an object.",
         "invalid_key": "Object keys must be strings.",
         "required": "Required property is missing.",
+        "invalid_property": "Invalid property name.",
     }
 
     def __init__(
         self,
         properties: typing.Mapping[str, Validator[typing.Any]],
         required: typing.Optional[typing.Tuple[str, ...]] = None,
+        deny_additional: bool = False,
     ):
         assert all(isinstance(k, str) for k in properties.keys())
         assert all(isinstance(v, Validator) for v in properties.values())
@@ -601,6 +643,7 @@ class Object(Validator[typing.Dict[str, typing.Any]]):
         )
         self.properties = properties
         self.required = tuple(properties.keys()) if required is None else required
+        self.deny_additional = deny_additional
 
     def validate(
         self, value: typing.Any, allow_coerce: bool = False
@@ -630,6 +673,15 @@ class Object(Validator[typing.Dict[str, typing.Any]]):
                 validated[key] = child_schema.validate(item, allow_coerce)
             except ValidationError as exc:
                 errors[key] = exc.detail
+
+        if self.deny_additional:
+            remaining = [
+                key
+                for key in value.keys()
+                if key not in set(validated.keys()) | set(errors.keys())
+            ]
+            for key in remaining:
+                errors[key] = self.error_message("invalid_property")
 
         if errors:
             raise ValidationError(errors)

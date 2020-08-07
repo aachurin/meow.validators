@@ -52,10 +52,12 @@ from .elements import (
     TypedList,
     Router,
     Chain,
+    Switch,
+    Error,
 )
 
 
-__version__ = "1.5.1"
+__version__ = "1.5.2"
 __all__ = (
     "V",
     "field",
@@ -84,4 +86,6 @@ __all__ = (
     "List",
     "Router",
     "Chain",
+    "Switch",
+    "Error",
 )

@@ -75,7 +75,22 @@ class Adapter(Validator[_T], typing.Generic[_V, _T]):
         self.converter = converter
 
     def validate(self, value: typing.Any, allow_coerce: bool = False) -> _T:
-        return self.converter(self.validator.validate(value))
+        return self.converter(self.validator.validate(value, allow_coerce))
+
+
+class Chain(Validator[_T], typing.Generic[_V, _T]):
+    def __init__(
+        self, validator: Validator[_V], next_validator: Validator[_T],
+    ):
+        assert isinstance(validator, Validator)
+        assert isinstance(next_validator, Validator)
+        self.validator = validator
+        self.next_validator = next_validator
+
+    def validate(self, value: typing.Any, allow_coerce: bool = False) -> _T:
+        return self.next_validator.validate(
+            self.validator.validate(value, allow_coerce), allow_coerce
+        )
 
 
 class _Any(Validator[typing.Any]):

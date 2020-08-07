@@ -611,3 +611,11 @@ def test_adapter():
         == "meow.validators.elements.Adapter[builtins.str, builtins.str*]"
     )
     assert reveal_type(Adapter(String(), lambda x: x).validate("s")) == "builtins.str*"
+
+
+def test_chain():
+    assert (
+        reveal_type(Chain(String(), Integer()))
+        == "meow.validators.elements.Chain[builtins.str*, builtins.int*]"
+    )
+    assert reveal_type(Chain(String(), Integer()).validate("1", allow_coerce=True)) == "builtins.int*"

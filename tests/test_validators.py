@@ -24,14 +24,18 @@ def test_string():
     assert reveal_type(validator) == "meow.validators.elements.Validator[builtins.str*]"
     assert validator == String(minlength=2, maxlength=10, pattern="a+")
     assert validator.validate("aaa") == "aaa"
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError) as e:
         validator.validate("a")
-    with pytest.raises(ValidationError):
+    assert e.value.as_dict() == {"": "Must have at least 2 characters."}
+    with pytest.raises(ValidationError) as e:
         validator.validate("aaaaaaaaaaa")
-    with pytest.raises(ValidationError):
+    assert e.value.as_dict() == {"": "Must have no more than 10 characters."}
+    with pytest.raises(ValidationError) as e:
         validator.validate("bbbbb")
-    with pytest.raises(ValidationError):
+    assert e.value.as_dict() == {"": "Must match the pattern /a+/."}
+    with pytest.raises(ValidationError) as e:
         String(minlength=1).validate("")
+    assert e.value.as_dict() == {"": "Must have at least 1 characters."}
 
 
 def test_int():
@@ -41,41 +45,42 @@ def test_int():
     assert V[int].validate("123", allow_coerce=True) == 123
     assert reveal_type(V[int]) == "meow.validators.elements.Validator[builtins.int*]"
     assert reveal_type(V[int].validate(123)) == "builtins.int*"
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError) as e:
         V[int].validate("123")
-    with pytest.raises(ValidationError):
+    assert e.value.as_dict() == {"": "Must be an integer."}
+    with pytest.raises(ValidationError) as e:
         V[int].validate(123.2)
-    with pytest.raises(ValidationError):
+    assert e.value.as_dict() == {"": "Must be an integer."}
+    with pytest.raises(ValidationError) as e:
         V[int].validate(True)
-    with pytest.raises(ValidationError):
+    assert e.value.as_dict() == {"": "Must be an integer."}
+    with pytest.raises(ValidationError) as e:
         V[int].validate(None)
+    assert e.value.as_dict() == {"": "Must be an integer."}
     validator = V(int, gte=2, lte=10)
     assert validator == Integer(gte=2, lte=10)
     assert validator.validate(2) == 2
     assert validator.validate(10) == 10
     assert reveal_type(validator) == "meow.validators.elements.Validator[builtins.int*]"
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError) as e:
         validator.validate(1)
-    with pytest.raises(ValidationError):
+    assert e.value.as_dict() == {"": "Must be greater than or equal to 2."}
+    with pytest.raises(ValidationError) as e:
         validator.validate(11)
-    with pytest.raises(ValidationError):
+    assert e.value.as_dict() == {"": "Must be less than or equal to 10."}
+    with pytest.raises(ValidationError) as e:
         validator.validate("asd", allow_coerce=True)
-    try:
-        validator.validate("asd", allow_coerce=True)
-    except ValidationError as e:
-        assert e.as_dict() == {"": "Expected Integer."}
+    assert e.value.as_dict() == {"": "Must be an integer."}
     validator = V(int, gt=2, lt=10)
     assert validator == Integer(gt=2, lt=10)
     assert validator.validate(3) == 3
     assert validator.validate(9) == 9
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError) as e:
         validator.validate(2)
-    with pytest.raises(ValidationError):
-        validator.validate(1)
-    with pytest.raises(ValidationError):
+    assert e.value.as_dict() == {"": "Must be greater than 2."}
+    with pytest.raises(ValidationError) as e:
         validator.validate(10)
-    with pytest.raises(ValidationError):
-        validator.validate(11)
+    assert e.value.as_dict() == {"": "Must be less than 10."}
 
 
 def test_float():
@@ -251,7 +256,7 @@ def test_union():
     )
     with pytest.raises(ValidationError) as e:
         V[typing.Union[str, int]].validate(123.3)
-    assert e.value.as_dict() == {"_union": ["Expected String.", "Expected Integer."]}
+    assert e.value.as_dict() == {"_union": ["Must be a string.", "Must be an integer."]}
 
 
 def test_if():
@@ -260,12 +265,12 @@ def test_if():
     assert validator.validate("S") == "S"
     with pytest.raises(ValidationError) as e:
         validator.validate("")
-    assert e.value.as_dict() == {"": "String '' is less than minimum length of 1."}
+    assert e.value.as_dict() == {"": "Must have at least 1 characters."}
     validator = If(String(), String(minlength=1))
     assert validator.validate("S") == "S"
     with pytest.raises(ValidationError) as e:
         validator.validate(123)
-    assert e.value.as_dict() == {"": "Expected String."}
+    assert e.value.as_dict() == {"": "Must be a string."}
 
 
 def test_any():
@@ -310,6 +315,31 @@ def test_mapping():
     with pytest.raises(ValidationError):
         validator.validate({1: 10})
     assert validator.validate({"a": 1}) == {"a": 1}
+
+
+def test_router():
+    validator = Router({"a": Const(10), "b": String()})
+    with pytest.raises(ValidationError) as e:
+        validator.validate({"a": "a"})
+    assert e.value.as_dict() == {"a": "Does not match 10."}
+    with pytest.raises(ValidationError) as e:
+        validator.validate({"a": 10, "c": 20})
+    assert e.value.as_dict() == {"c": "Does not match a, b."}
+    with pytest.raises(ValidationError) as e:
+        validator.validate(42)
+    assert e.value.as_dict() == {"": "Must be an object."}
+    validator = Router(
+        {"a": Const(10), "b": String(), "c": Integer()}, minitems=1, maxitems=2
+    )
+    with pytest.raises(ValidationError) as e:
+        validator.validate({})
+    assert e.value.as_dict() == {
+        "": "Must have at least 1 properties."
+    }
+    with pytest.raises(ValidationError) as e:
+        validator.validate({"a": 10, "b": "aaa", "c": 42})
+    assert e.value.as_dict() == {"": "Must have no more then 2 properties."}
+    assert validator.validate({"a": 10, "b": "aaa"}) == {"a": 10, "b": "aaa"}
 
 
 def test_object():
@@ -507,7 +537,7 @@ def test_dataclasses():
         V[C].validate({"a": [], "b": "ccc", "e": 1})
     except ValidationError as e:
         assert e.as_dict() == {
-            "a": "Array item count 0 is less than minimum count of 2.",
+            "a": "Must have at least 2 items.",
             "c": "Required property is missing.",
             "d": "Required property is missing.",
         }

@@ -50,10 +50,11 @@ from .elements import (
     Object,
     List,
     TypedList,
+    Router,
 )
 
 
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 __all__ = (
     "V",
     "field",
@@ -80,4 +81,5 @@ __all__ = (
     "Mapping",
     "Object",
     "List",
+    "Router",
 )

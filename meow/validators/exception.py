@@ -24,11 +24,11 @@ import typing
 
 
 class ValidationError(ValueError):
-    def __init__(self, detail: typing.Union[object, typing.Dict[str, object]]):
+    def __init__(self, detail: typing.Any):
         self.detail = detail
         super().__init__(detail)
 
-    def as_dict(self) -> typing.Dict[str, object]:
+    def as_dict(self) -> typing.Dict[str, typing.Any]:
         if isinstance(self.detail, typing.Mapping):
             return dict(self.detail)
         else:

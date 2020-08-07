@@ -333,9 +333,7 @@ def test_router():
     )
     with pytest.raises(ValidationError) as e:
         validator.validate({})
-    assert e.value.as_dict() == {
-        "": "Must have at least 1 properties."
-    }
+    assert e.value.as_dict() == {"": "Must have at least 1 properties."}
     with pytest.raises(ValidationError) as e:
         validator.validate({"a": 10, "b": "aaa", "c": 42})
     assert e.value.as_dict() == {"": "Must have no more then 2 properties."}

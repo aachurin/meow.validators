@@ -618,4 +618,7 @@ def test_chain():
         reveal_type(Chain(String(), Integer()))
         == "meow.validators.elements.Chain[builtins.str*, builtins.int*]"
     )
-    assert reveal_type(Chain(String(), Integer()).validate("1", allow_coerce=True)) == "builtins.int*"
+    assert (
+        reveal_type(Chain(String(), Integer()).validate("1", allow_coerce=True))
+        == "builtins.int*"
+    )
